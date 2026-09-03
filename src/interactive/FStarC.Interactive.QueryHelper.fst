@@ -32,6 +32,8 @@ module DsEnv = FStarC.Syntax.DsEnv
 module TcErr = FStarC.TypeChecker.Err
 module TcEnv = FStarC.TypeChecker.Env
 module CTable = FStarC.Interactive.CompletionTable
+module Docs = FStarC.Docs
+module SyntaxUtil = FStarC.Syntax.Util
 
 let with_printed_effect_args #a (k : unit -> ML a) : ML a =
   Options.with_saved_options
@@ -43,13 +45,52 @@ let term_to_string tcenv t =
 let sigelt_to_string tcenv se =
   with_printed_effect_args (fun () -> Syntax.Print.sigelt_to_string' (DsEnv.set_current_module tcenv.dsenv tcenv.curmodule) se)
 
+let rec find_sigelt (ses:list Syntax.Syntax.sigelt) (lid:Ident.lident)
+  : ML (option Syntax.Syntax.sigelt)
+  =
+  U.find_map ses (fun se ->
+    match se.sigel with
+    | Syntax.Syntax.Sig_bundle {ses} -> find_sigelt ses lid
+    | _ ->
+      if SyntaxUtil.lids_of_sigelt se
+         |> List.existsb (fun l -> Ident.lid_equals l lid)
+      then Some se
+      else None)
+
+let interface_sigelt (tcenv:TcEnv.env) (lid:Ident.lident)
+  : ML (option Syntax.Syntax.sigelt)
+  =
+  U.find_map tcenv.modules (fun m ->
+    if m.is_interface then find_sigelt m.declarations lid else None)
+
+let docs_of_lid (tcenv:TcEnv.env) (lid:Ident.lident) : ML (option string) =
+  let se =
+    match interface_sigelt tcenv lid with
+    | Some se -> Some se
+    | None ->
+      (match TcEnv.lookup_qname tcenv lid with
+       | Some (Inr (se, _), _) -> Some se
+       | _ -> None)
+  in
+  match se with
+  | Some se -> (
+    match Docs.doc_of_sigelt se with
+    | Docs.Doc_text s -> Some s
+    (* See the interface: an unusable payload is reported as "no
+       documentation" rather than as an error, since the request has
+       nowhere to say more. *)
+    | Docs.Doc_absent
+    | Docs.Doc_unsupported _ -> None
+  )
+  | _ -> None
+
 let symlookup tcenv symbol pos_opt requested_info =
   let info_of_lid_str lid_str =
     let lid = Ident.lid_of_ids (List.map Ident.id_of_text (U.split lid_str ".")) in
     let lid = Option.dflt lid <| DsEnv.resolve_to_fully_qualified_name tcenv.dsenv lid in
     try_lookup_lid tcenv lid |> Option.map (fun ((_, typ), r) -> (Inr lid, typ, r)) in
 
-  let docs_of_lid lid = None in
+  let docs_of_lid lid = docs_of_lid tcenv lid in
 
   let def_of_lid lid =
     Option.bind (TcEnv.lookup_qname tcenv lid) (function

@@ -34,7 +34,7 @@ let debug (f:unit -> ML unit) : ML unit = if !dbg then f () else ()
  * We write this version number to the cache files, and
  * detect when loading the cache that the version number is same
  *)
-let cache_version_number = 78
+let cache_version_number = 79
 
 (*
  * Abbreviation for what we store in the checked files (stages as described below)
@@ -242,13 +242,20 @@ let hash_dependences (deps:Dep.deps) (fn:string) (deps_of_fn:list string): ML (e
   hash_deps [] binary_deps
 
 
-let load_tc_result (checked_fn:string) : ML (option (list (string & string) & tc_result)) =
+let load_tc_result_with_digest (checked_fn:string)
+  : ML (option (string & list (string & string) & tc_result))
+  =
   let entry : option (checked_file_entry_stage1 & checked_file_entry_stage2) =
     BU.load_2values_from_file checked_fn
   in
   match entry with
-  | Some ((_,s2)) -> Some (s2.deps_dig, s2.tc_res)
+  | Some ((s1, s2)) when s1.version = cache_version_number ->
+    Some (s1.digest, s2.deps_dig, s2.tc_res)
   | _ -> None
+
+let load_tc_result (checked_fn:string) : ML (option (list (string & string) & tc_result)) =
+  load_tc_result_with_digest checked_fn
+  |> Option.map (fun (_, deps, tcr) -> deps, tcr)
 
 (*
  * Second step for loading checked files, validates the tc data

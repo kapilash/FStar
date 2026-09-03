@@ -32,12 +32,20 @@ val cache_version_number : int
 type tc_result = {
   checked_module: Syntax.modul; //persisted
   mii:DsEnv.module_inclusion_info; //persisted
+  has_interface: bool; //persisted; false for interfaces and implementations without one
   smt_decls:(FStarC.SMTEncoding.Term.decls_t &  //list of smt decls and fvbs for the module
              list FStarC.SMTEncoding.Env.fvar_binding); //persisted
 
   tc_time:int;
   extraction_time:int
 }
+
+(** Load a typechecking result together with the source digest stored in the
+    checked-file header. The cache version is validated before the stored
+    typechecking result is projected. *)
+val load_tc_result_with_digest
+  (checked_fn:string)
+  : ML (option (string & list (string & string) & tc_result))
 
 val load_tc_result (checked_fn:string) : ML (option (list (string & string) & tc_result))
 
