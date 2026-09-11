@@ -230,9 +230,11 @@ let export_docs (path : string) : ML unit =
       match interface_path path, recorded_interface_digest deps with
       | Some iface, Some expected_digest ->
         (match CF.load_tc_result_with_digest iface with
-         | Some (actual_digest, _, iface_tcr) ->
+         | Some (_, _, iface_tcr) ->
            let iface_m = iface_tcr.CF.checked_module in
-           if actual_digest = expected_digest
+           (* At this base the implementation records the digest of the
+              interface's checked file, not of its source. *)
+           if BU.digest_of_file iface = expected_digest
               && iface_m.is_interface
               && Ident.lid_equals iface_m.name m.name
            then print_module iface_m

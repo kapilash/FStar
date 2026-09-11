@@ -60,8 +60,21 @@ let rec find_sigelt (ses:list Syntax.Syntax.sigelt) (lid:Ident.lident)
 let interface_sigelt (tcenv:TcEnv.env) (lid:Ident.lident)
   : ML (option Syntax.Syntax.sigelt)
   =
-  U.find_map tcenv.modules (fun m ->
-    if m.is_interface then find_sigelt m.declarations lid else None)
+  match U.find_map tcenv.modules (fun m ->
+          if m.is_interface then find_sigelt m.declarations lid else None) with
+  | Some se -> Some se
+  | None ->
+    (* At this base an interface checked together with its implementation is
+       interleaved into it rather than kept as a module of its own. Its
+       declarations are still in the signature context, with ranges in the
+       interface file. *)
+    U.find_map tcenv.gamma_sig (fun (lids, se) ->
+      match se.Syntax.Syntax.sigel with
+      | Syntax.Syntax.Sig_declare_typ _
+        when List.existsb (Ident.lid_equals lid) lids
+          && FStarC.Parser.Dep.is_interface (Range.Ops.file_of_range se.sigrng) ->
+        Some se
+      | _ -> None)
 
 let docs_of_lid (tcenv:TcEnv.env) (lid:Ident.lident) : ML (option string) =
   let se =

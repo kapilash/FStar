@@ -483,10 +483,14 @@ let rec tc_one_file_internal
 
           in
           let mii = FStarC.Syntax.DsEnv.inclusion_info (tcenv_of_uenv env).dsenv mname in
+          (* An interface is either checked together with this
+             implementation (interleaving passes it as [interface_fn]), or
+             was loaded earlier and sits in the environment. *)
           let has_interface =
             not (tcmod.is_interface)
-            && ((tcenv_of_uenv env).modules |> List.existsb (fun m ->
-                  m.is_interface && lid_equals m.name tcmod.name))
+            && (Some? interface_fn
+                || ((tcenv_of_uenv env).modules |> List.existsb (fun m ->
+                      m.is_interface && lid_equals m.name tcmod.name)))
           in
           pd,
           {
