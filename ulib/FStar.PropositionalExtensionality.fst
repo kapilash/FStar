@@ -33,10 +33,20 @@ module FStar.PropositionalExtensionality
  *
  *)
 
+(*| Propositional extensionality: two propositions are equal exactly when they
+    are equivalent.
+
+    An axiom, closely tied to the definition of `Prims.prop` as the type of all
+    subtypes of `unit`. Some other plausible definitions of `prop` are
+    inconsistent with it. See also `FStar.PropositionalExtensionality.apply`. *)
 assume
 val axiom (_:unit)
   : Lemma (forall (p1 p2:prop). (p1 <==> p2) <==> (p1 == p2))
 
+(*| Two propositions `p1` and `p2` are equal exactly when they are equivalent.
+
+    The specialization of `FStar.PropositionalExtensionality.axiom` to two given
+    propositions. *)
 let apply (p1 p2:prop)
   : Lemma (ensures  ((p1 <==> p2) <==> (p1 == p2)))
   = axiom ()

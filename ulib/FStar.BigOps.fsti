@@ -35,14 +35,20 @@ module FStar.BigOps
 
 module L = FStar.List.Tot.Base
 
-(** We control reduction using the [delta_attr] feature of the
-    normalizer. See FStar.Pervasives for how that works. Every term
-    that is to be reduced is with the [__reduce__] attribute *)
+(*| A marker attribute: definitions tagged `[@@__reduce__]` are unfolded by
+    `FStar.BigOps.normal`.
+
+    It is used through the `delta_attr` normalization step; see
+    `FStar.Pervasives.delta_attr`. *)
 let __reduce__ = ()
 
-(** We wrap [norm] with a module-specific custom usage, triggering
-    specific reduction steps *)
+(*| Normalizes `x` with the steps used by the implicitly reducing operators of
+    this module.
 
+    It unfolds definitions tagged `FStar.BigOps.__reduce__`, as well as
+    `FStar.List.Tot.Base.fold_right_gtot` and `FStar.List.Tot.Base.map_gtot`,
+    and performs `iota`, `zeta`, `primops` and `simplify` reduction. On a list
+    literal, `FStar.BigOps.big_and f [a; b; c]` thus becomes `f a /\ f b /\ f c`. *)
 [@@ __reduce__]
 unfold
 let normal (#a: Type) (x: a) : a =
@@ -56,22 +62,29 @@ let normal (#a: Type) (x: a) : a =
     ]
     x
 
-(** A useful lemma to relate terms to their implicilty reducing variants *)
+(*| Proves that `FStar.BigOps.normal f` is equal to `f`.
+
+    Use it to move between an implicitly reducing operator, such as
+    `FStar.BigOps.big_and`, and its non-reducing variant, such as
+    `FStar.BigOps.big_and'`. *)
 val normal_eq (#a: Type) (f: a) : Lemma (f == normal f)
 
 (**** Map and fold *)
 
-(** A utility that combines map and fold: [map_op' op f l z] maps each
-    element of [l] by [f] and then combines them using [op] *)
+(*| Maps each element of `l` with `f` and combines the results with `op`,
+    starting from `z` on the right: `op (f x1) (op (f x2) (... z))`.
+
+    A ghost fold, defined with `FStar.List.Tot.Base.fold_right_gtot`. Its
+    equations are `FStar.BigOps.map_op'_nil` and `FStar.BigOps.map_op'_cons`. *)
 [@@ __reduce__]
 let map_op' #a #b #c (op: (b -> c -> GTot c)) (f: (a -> GTot b)) (l: list a) (z: c) : GTot c =
   L.fold_right_gtot #a #c l (fun x acc -> (f x) `op` acc) z
 
-(** Equations for [map_op'] showing how it folds over the empty list *)
+(*| Proves that `FStar.BigOps.map_op'` on the empty list is the initial value `z`. *)
 val map_op'_nil (#a #b #c: Type) (op: (b -> c -> GTot c)) (f: (a -> GTot b)) (z: c)
     : Lemma (map_op' op f [] z == z)
 
-(** Equations for [map_op'] showing how it folds over a cons cell *)
+(*| Proves that `FStar.BigOps.map_op'` on `hd :: tl` is `op (f hd) (map_op' op f tl z)`. *)
 val map_op'_cons
       (#a #b #c: Type)
       (op: (b -> c -> GTot c))
@@ -83,25 +96,48 @@ val map_op'_cons
 
 (**** Conjunction *)
 
-(** [big_and' f l] = [/\_{x in l} f x] *)
+(*| The conjunction of `f x` for all elements `x` of the list `l`; `True` on the
+    empty list.
+
+    This variant does not reduce implicitly, which suits symbolic reasoning
+    with `FStar.BigOps.big_and'_nil`, `FStar.BigOps.big_and'_cons` and
+    `FStar.BigOps.big_and'_forall`:
+
+    ```fstar
+    let all_positive' (l: list nat)
+      : Lemma (requires FStar.BigOps.big_and' (fun (x: nat) -> x > 0) l)
+              (ensures forall x. FStar.List.Tot.memP x l ==> x > 0)
+      = FStar.BigOps.big_and'_forall (fun (x: nat) -> x > 0) l
+    ```
+
+    `FStar.BigOps.big_and` is the implicitly reducing variant. *)
 [@@ __reduce__]
 let big_and' #a (f: (a -> prop)) (l: list a) : prop = map_op' l_and f l True
 
-(** Equations for [big_and'] showing it to be trivial over the empty list *)
+(*| Proves that `FStar.BigOps.big_and'` over the empty list is `True`. *)
 val big_and'_nil (#a: Type) (f: (a -> prop)) : Lemma (big_and' f [] == True)
 
-(** Equations for [big_and'] showing it to be a fold over a list with [/\] *)
+(*| Proves that `FStar.BigOps.big_and'` over `hd :: tl` is `f hd /\ big_and' f tl`. *)
 val big_and'_cons (#a: Type) (f: (a -> prop)) (hd: a) (tl: list a)
     : Lemma (big_and' f (hd :: tl) == (f hd /\ big_and' f tl))
 
-(** Interpreting the finite conjunction [big_and f l]
-    as an infinite conjunction [forall] *)
+(*| Proves that `FStar.BigOps.big_and' f l` holds if and only if `f x` holds for
+    every `x` in `l` (by `FStar.List.Tot.Base.memP`). *)
 val big_and'_forall (#a: Type) (f: (a -> prop)) (l: list a)
     : Lemma (big_and' f l <==> (forall x. L.memP x l ==> f x))
 
-(** [big_and f l] is an implicitly reducing variant of [big_and']
-    It is defined in [prop] *)
+(*| The conjunction of `f x` for all elements `x` of `l`, which reduces
+    implicitly when `l` is a list literal.
 
+    It is `FStar.BigOps.big_and'` wrapped in `FStar.BigOps.normal`, so
+    `big_and f [a; b; c]` becomes `f a /\ f b /\ f c` during type checking:
+
+    ```fstar
+    let all_positive () : Lemma (FStar.BigOps.big_and (fun (x: int) -> x > 0) [1; 2; 3]) = ()
+    ```
+
+    For a list that is not a literal, reason about `FStar.BigOps.big_and'`
+    instead, using `FStar.BigOps.normal_eq` if needed. *)
 [@@ __reduce__]
 unfold
 let big_and #a (f: (a -> prop)) (l: list a) : prop =
@@ -109,25 +145,33 @@ let big_and #a (f: (a -> prop)) (l: list a) : prop =
 
 (**** Disjunction *)
 
-(** [big_or f l] = [\/_{x in l} f x] *)
+(*| The disjunction of `f x` for all elements `x` of the list `l`; `False` on
+    the empty list.
+
+    This variant does not reduce implicitly; its lemmas are
+    `FStar.BigOps.big_or'_nil`, `FStar.BigOps.big_or'_cons` and
+    `FStar.BigOps.big_or'_exists`. `FStar.BigOps.big_or` is the implicitly
+    reducing variant. *)
 [@@ __reduce__]
 let big_or' #a (f: (a -> prop)) (l: list a) : prop = map_op' l_or f l False
 
-(** Equations for [big_or] showing it to be [False] on the empty list *)
+(*| Proves that `FStar.BigOps.big_or'` over the empty list is `False`. *)
 val big_or'_nil (#a: Type) (f: (a -> prop)) : Lemma (big_or' f [] == False)
 
-(** Equations for [big_or] showing it to fold over a list *)
+(*| Proves that `FStar.BigOps.big_or'` over `hd :: tl` is `f hd \/ big_or' f tl`. *)
 val big_or'_cons (#a: Type) (f: (a -> prop)) (hd: a) (tl: list a)
     : Lemma (big_or' f (hd :: tl) == (f hd \/ big_or' f tl))
 
-(** Interpreting the finite disjunction [big_or f l]
-    as an infinite disjunction [exists] *)
+(*| Proves that `FStar.BigOps.big_or' f l` holds if and only if `f x` holds for
+    some `x` in `l` (by `FStar.List.Tot.Base.memP`). *)
 val big_or'_exists (#a: Type) (f: (a -> prop)) (l: list a)
     : Lemma (big_or' f l <==> (exists x. L.memP x l /\ f x))
 
-(** [big_or f l] is an implicitly reducing variant of [big_or']
-     It is defined in [prop] *)
+(*| The disjunction of `f x` for all elements `x` of `l`, which reduces
+    implicitly when `l` is a list literal.
 
+    It is `FStar.BigOps.big_or'` wrapped in `FStar.BigOps.normal`, so
+    `big_or f [a; b; c]` becomes `f a \/ f b \/ f c`. *)
 [@@ __reduce__]
 unfold
 let big_or #a (f: (a -> prop)) (l: list a) : prop =
@@ -152,54 +196,68 @@ let big_or #a (f: (a -> prop)) (l: list a) : prop =
 ///   . x x x x
 ///   n x x x x  ]}
 
-(** Mapping pairs of elements of [l] using [f] and combining them with
-    [op]. *)
+(*| Combines `f x y` with `op` over all pairs of elements of `l` where `x`
+    occurs before `y`, starting from `z`.
+
+    For `l = [a; b; c]` it visits the pairs `(a, b)`, `(a, c)` and `(b, c)`:
+    the strict lower triangle of `l` times `l`, without the diagonal. A ghost
+    function, used to define `FStar.BigOps.pairwise_and'` and
+    `FStar.BigOps.pairwise_or'`. *)
 [@@ __reduce__]
 let rec pairwise_op' #a #b (op: (b -> b -> GTot b)) (f: (a -> a -> b)) (l: list a) (z: b) : GTot b =
   match l with
   | [] -> z
   | hd :: tl -> (map_op' op (f hd) tl z) `op` (pairwise_op' op f tl z)
 
-(** [f] is a symmetric relation *)
+(*| States that the relation `f` is symmetric: `f x y <==> f y x` for all `x`
+    and `y`. *)
 let symmetric (#a: Type) (f: (a -> a -> prop)) = forall x y. f x y <==> f y x
 
-(** [f] is a reflexive relation *)
+(*| States that the relation `f` is reflexive: `f x x` for all `x`. *)
 let reflexive (#a: Type) (f: (a -> a -> prop)) = forall x. f x x
 
-(** [f] is a anti-reflexive relation *)
+(*| States that the relation `f` is irreflexive: `~(f x x)` for all `x`. *)
 let anti_reflexive (#a: Type) (f: (a -> a -> prop)) = forall x. ~(f x x)
 
 (**** Pairwise conjunction *)
 
-(** [pairwise_and f l] conjoins [f] on all pairs excluding the diagonal
-    i.e.,
+(*| The conjunction of `f x y` over all pairs of elements of `l` where `x`
+    occurs before `y`; `True` on lists with fewer than two elements.
 
-      {[ pairwise_and f [a; b; c] = f a b /\ f a c /\ f b c ]} *)
+    For example, `pairwise_and' f [a; b; c]` is `f a b /\ f a c /\ f b c`. A
+    typical use is pairwise disjointness. This variant does not reduce
+    implicitly; `FStar.BigOps.pairwise_and` does. *)
 [@@ __reduce__]
 let pairwise_and' #a (f: (a -> a -> prop)) (l: list a) : prop = pairwise_op' l_and f l True
 
-(** Equations for [pairwise_and] showing it to be a fold with [big_and] *)
+(*| Proves that `FStar.BigOps.pairwise_and'` over the empty list is `True`. *)
 val pairwise_and'_nil (#a: Type) (f: (a -> a -> prop)) : Lemma (pairwise_and' f [] == True)
 
-(** Equations for [pairwise_and] showing it to be a fold with [big_and] *)
+(*| Proves that `FStar.BigOps.pairwise_and'` over `hd :: tl` is
+    `big_and' (f hd) tl /\ pairwise_and' f tl`. *)
 val pairwise_and'_cons (#a: Type) (f: (a -> a -> prop)) (hd: a) (tl: list a)
     : Lemma (pairwise_and' f (hd :: tl) == (big_and' (f hd) tl /\ pairwise_and' f tl))
 
-(** [pairwise_and' f l] for symmetric reflexive relations [f]
-    is interpreted as universal quantification over pairs of list elements **)
+(*| Proves that, for a symmetric and reflexive relation `f`,
+    `FStar.BigOps.pairwise_and' f l` holds if and only if `f x y` holds for all
+    `x` and `y` in `l`. *)
 val pairwise_and'_forall (#a: Type) (f: (a -> a -> prop)) (l: list a)
     : Lemma (requires symmetric f /\ reflexive f)
       (ensures (pairwise_and' f l <==> (forall x y. L.memP x l /\ L.memP y l ==> f x y)))
 
-(** [pairwise_and' f l] for symmetric relations [f] interpreted as
-    universal quantification over pairs of list of unique elements *)
+(*| Proves that, for a symmetric relation `f` and a list `l` without repeated
+    elements, `FStar.BigOps.pairwise_and' f l` holds if and only if `f x y`
+    holds for all distinct `x` and `y` in `l`.
+
+    The precondition on `l` is `FStar.List.Tot.Base.no_repeats_p`. *)
 val pairwise_and'_forall_no_repeats (#a: Type) (f: (a -> a -> prop)) (l: list a)
     : Lemma (requires symmetric f /\ L.no_repeats_p l)
       (ensures (pairwise_and' f l <==> (forall x y. L.memP x l /\ L.memP y l /\ x =!= y ==> f x y)))
 
-(** [pairwise_and f l] is an implicitly reducing variant of [pairwise_and']
-    It is defined in [prop] *)
+(*| The conjunction of `f x y` over all pairs of elements of `l` where `x`
+    occurs before `y`, which reduces implicitly when `l` is a list literal.
 
+    It is `FStar.BigOps.pairwise_and'` wrapped in `FStar.BigOps.normal`. *)
 [@@ __reduce__]
 unfold
 let pairwise_and #a (f: (a -> a -> prop)) (l: list a) : prop =
@@ -207,35 +265,42 @@ let pairwise_and #a (f: (a -> a -> prop)) (l: list a) : prop =
 
 (**** Pairwise disjunction *)
 
-(** [pairwise_or f l] disjoins [f] on all pairs excluding the diagonal
-    i.e., [pairwise_or f [a; b; c] = f a b \/ f a c \/ f b c] *)
+(*| The disjunction of `f x y` over all pairs of elements of `l` where `x`
+    occurs before `y`; `False` on lists with fewer than two elements.
+
+    For example, `pairwise_or' f [a; b; c]` is `f a b \/ f a c \/ f b c`. This
+    variant does not reduce implicitly; `FStar.BigOps.pairwise_or` does. *)
 [@@ __reduce__]
 let pairwise_or' #a (f: (a -> a -> prop)) (l: list a) : prop = pairwise_op' l_or f l False
 
-(** Equations for [pairwise_or'] showing it to be a fold with [big_or'] *)
+(*| Proves that `FStar.BigOps.pairwise_or'` over the empty list is `False`. *)
 val pairwise_or'_nil (#a: Type) (f: (a -> a -> prop)) : Lemma (pairwise_or' f [] == False)
 
-(** Equations for [pairwise_or'] showing it to be a fold with [big_or'] *)
+(*| Proves that `FStar.BigOps.pairwise_or'` over `hd :: tl` is
+    `big_or' (f hd) tl \/ pairwise_or' f tl`. *)
 val pairwise_or'_cons (#a: Type) (f: (a -> a -> prop)) (hd: a) (tl: list a)
     : Lemma (pairwise_or' f (hd :: tl) == (big_or' (f hd) tl \/ pairwise_or' f tl))
 
-(** [pairwise_or' f l] for symmetric, anti-reflexive relations [f]
-    interpreted as existential quantification over
-    pairs of list elements *)
+(*| Proves that, for a symmetric and irreflexive relation `f`,
+    `FStar.BigOps.pairwise_or' f l` holds if and only if `f x y` holds for some
+    `x` and `y` in `l`. *)
 val pairwise_or'_exists (#a: Type) (f: (a -> a -> prop)) (l: list a)
     : Lemma (requires symmetric f /\ anti_reflexive f)
       (ensures (pairwise_or' f l <==> (exists x y. L.memP x l /\ L.memP y l /\ f x y)))
 
-(** [pairwise_or' f l] for symmetric, anti-reflexive relations [f]
-    interpreted as existential quantification over
-    pairs of list elements *)
+(*| Proves that, for a symmetric relation `f` and a list `l` without repeated
+    elements, `FStar.BigOps.pairwise_or' f l` holds if and only if `f x y`
+    holds for some distinct `x` and `y` in `l`.
+
+    The precondition on `l` is `FStar.List.Tot.Base.no_repeats_p`. *)
 val pairwise_or'_exists_no_repeats (#a: Type) (f: (a -> a -> prop)) (l: list a)
     : Lemma (requires symmetric f /\ L.no_repeats_p l)
       (ensures (pairwise_or' f l <==> (exists x y. L.memP x l /\ L.memP y l /\ x =!= y /\ f x y)))
 
-(** [pairwise_or f l] is an implicitly reducing variant of [pairwise_or']
-    It is defined in [prop] *)
+(*| The disjunction of `f x y` over all pairs of elements of `l` where `x`
+    occurs before `y`, which reduces implicitly when `l` is a list literal.
 
+    It is `FStar.BigOps.pairwise_or'` wrapped in `FStar.BigOps.normal`. *)
 [@@ __reduce__]
 unfold
 let pairwise_or #a (f: (a -> a -> prop)) (l: list a) : prop =

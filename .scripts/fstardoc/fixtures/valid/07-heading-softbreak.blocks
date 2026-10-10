@@ -1,0 +1,12 @@
+paragraph
+  text "Two lines of one"
+  softbreak
+  text "paragraph, joined by a soft break."
+heading 2
+  text "Pitfalls"
+paragraph
+  text "Use "
+  code "index"
+  text " only below "
+  code "length s"
+  text "."

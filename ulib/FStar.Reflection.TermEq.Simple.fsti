@@ -12,20 +12,41 @@ effectful foo without running into a variable escaping its scope. *)
 open FStar.Stubs.Reflection.Types
 open FStar.Reflection.TermSpec
 
-(* A conservative version: works on all terms, returns `true` if they
-are guaranteed to have the same denotation. *)
+(*| Conservatively compares two terms: returns `true` only if they have the same denotation.
+
+    The same function as `FStar.Reflection.TermEq.term_eq`, with the
+    correctness property moved to the lemma
+    `FStar.Reflection.TermEq.Simple.term_eq_ok` and fewer dependencies. A
+    plain boolean result lets one write `if term_eq (f ()) t` with an effectful
+    `f` without a variable escaping its scope. The denotation
+    (`FStar.Reflection.TermSpec.denote_term`) ignores ranges, pretty-printing
+    names and sealed sorts. Runs natively as a plugin.
+
+    ```fstar
+    let _ = assert True by (guard (term_eq (`(1 + 2)) (`(1 + 2))))
+    ``` *)
 [@@plugin]
 val term_eq (t1 t2 : term) : bool
 
+(*| If `FStar.Reflection.TermEq.Simple.term_eq t1 t2` returns `true`, then `t1` and `t2` have the same denotation.
+
+    Triggered automatically on `term_eq t1 t2`. *)
 val term_eq_ok (t1 t2 : term)
   : Lemma (requires term_eq t1 t2)
           (ensures denote_term t1 == denote_term t2)
           [SMTPat (term_eq t1 t2)]
 
-(* Idem for universes *)
+(*| Conservatively compares two universes: returns `true` only if they are equal.
+
+    The same function as `FStar.Reflection.TermEq.univ_eq`, with the
+    correctness property moved to the lemma
+    `FStar.Reflection.TermEq.Simple.univ_eq_ok`. Runs natively as a plugin. *)
 [@@plugin]
 val univ_eq (u1 u2 : universe) : bool
 
+(*| If `FStar.Reflection.TermEq.Simple.univ_eq u1 u2` returns `true`, then `u1` and `u2` are equal.
+
+    Triggered automatically on `univ_eq u1 u2`. *)
 val univ_eq_ok (u1 u2 : universe)
   : Lemma (requires univ_eq u1 u2)
           (ensures u1 == u2)

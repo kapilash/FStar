@@ -17,21 +17,18 @@
 module FStar.ExtractAs
 open FStar.Stubs.Reflection.Types
 
-(** Replaces the annotated definition
-    by the specified implementation during extraction.
-    There are no checks whether the implementation
-    has the same semantics, or even the same type.
+(*| An attribute that replaces the annotated definition by the given implementation during extraction.
 
-    For example, if you have:
+    Nothing checks that the implementation has the same semantics, or even the
+    same type, as the definition. For example, with
 
+    ```text
     [@@extract_as (`(fun (x: nat) -> "not a number"))]
     let add_one (x: nat) : nat = x + 42
+    ```
 
-    Then `add_one` will extract to `let add_one x = "not a number"`,
-    and most likely cause the extracted program to crash.
-
-    Note that the argument needs to be a literal quotation.
-    The implementation can be recursive,
-    but then you need to construct the attribute via a tactic.
- *)
+    `add_one` extracts to `let add_one x = "not a number"`, which will most
+    likely crash the extracted program. The argument must be a literal
+    quotation. The implementation can be recursive, but then the attribute has
+    to be built with a tactic. *)
 let extract_as (impl: term) = ()

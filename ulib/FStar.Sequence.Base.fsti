@@ -36,6 +36,19 @@ sequences as they're modeled in Dafny.
 *)
 module FStar.Sequence.Base
 
+(*| The type of finite sequences of elements of type `a`, indexed from 0,
+    modeled on Dafny's `Seq T`.
+
+    The type is abstract and its operations are specified by the facts
+    collected in `FStar.Sequence.Base.all_seq_facts`, an F\* version of the
+    sequence axioms of the Dafny prelude. Equality of sequences is not
+    decidable; prove `FStar.Sequence.Base.equal` and rely on its
+    extensionality fact to get `==`.
+
+    This is a different type from `FStar.Seq.Base.seq`, which is specified
+    by lemmas with SMT patterns and has a much larger library. Use
+    `FStar.Sequence.Seq` to convert between the two. The module
+    `FStar.Sequence` includes this module and `FStar.Sequence.Ambient`. *)
 new val seq ([@@@ strictly_positive] a: Type u#a) : Type u#a
 
 (**
@@ -47,6 +60,7 @@ new val seq ([@@@ strictly_positive] a: Type u#a) : Type u#a
 ///
 /// function Seq#Length<T>(Seq T): int;
 
+(*| Returns the number of elements of a sequence (Dafny's `Seq#Length`). *)
 val length : #ty: Type -> seq ty -> nat
 
 /// We represent the Dafny function `Seq#Empty` with `empty`:
@@ -55,12 +69,17 @@ val length : #ty: Type -> seq ty -> nat
 ///
 /// We also provide an alias `nil` for it.
 
+(*| The sequence with no elements (Dafny's `Seq#Empty`).
+
+    Its length is 0, and a sequence of length 0 is equal to it. *)
 val empty : #ty: Type -> seq ty
 
 /// We represent the Dafny function `Seq#Singleton` with `singleton`:
 ///
 /// function Seq#Singleton<T>(T): Seq T;
 
+(*| Returns the sequence of length 1 whose element is `v` (Dafny's
+    `Seq#Singleton`). *)
 val singleton : #ty: Type -> ty -> seq ty
 
 /// We represent the Dafny function `Seq#Index` with `index`:
@@ -69,7 +88,12 @@ val singleton : #ty: Type -> ty -> seq ty
 ///
 /// We also provide the infix symbol `$@` for it.
 
+(*| Returns the element at index `i`, counting from 0 (Dafny's `Seq#Index`).
+
+    The caller must prove `i < length s`. The infix form is
+    `FStar.Sequence.Base.op_Dollar_At`, written `s $@ i`. *)
 val index: #ty: Type -> s: seq ty -> i: nat{i < length s} -> ty
+(*| Infix notation `s $@ i` for `FStar.Sequence.Base.index`. *)
 let ($@) = index
 
 /// We represent the Dafny function `Seq#Build` with `build`:
@@ -78,7 +102,15 @@ let ($@) = index
 ///
 /// We also provide the infix symbol `$::` for it.
 
+(*| Returns `s` with `v` added at the end (Dafny's `Seq#Build`).
+
+    The result has length `length s + 1` and its last element is `v`. The
+    infix form is `FStar.Sequence.Base.op_Dollar_Colon_Colon`, written
+    `s $:: v`. To add an element at the front, see
+    `FStar.Sequence.Util.cons`. *)
 val build: #ty: Type -> seq ty -> ty -> seq ty
+(*| Infix notation `s $:: v` for `FStar.Sequence.Base.build`, which adds `v`
+    at the end of `s`. *)
 let ($::) = build
 
 /// We represent the Dafny function `Seq#Append` with `append`:
@@ -87,31 +119,61 @@ let ($::) = build
 ///
 /// We also provide the infix notation `$+` for it.
 
+(*| Returns the concatenation of two sequences (Dafny's `Seq#Append`).
+
+    The length of the result is the sum of the lengths. The infix form is
+    `FStar.Sequence.Base.op_Dollar_Plus`, written `s0 $+ s1`. *)
 val append: #ty: Type -> seq ty -> seq ty -> seq ty
+(*| Infix notation `s0 $+ s1` for `FStar.Sequence.Base.append`. *)
 let ($+) = append
 
 /// We represent the Dafny function `Seq#Update` with `update`:
 ///
 /// function Seq#Update<T>(Seq T, int, T): Seq T;
 
+(*| Returns `s` with the element at index `i` replaced by `v` (Dafny's
+    `Seq#Update`).
+
+    The caller must prove `i < length s`. The length is unchanged. *)
 val update: #ty: Type -> s: seq ty -> i: nat{i < length s} -> ty -> seq ty
 
 /// We represent the Dafny function `Seq#Contains` with `contains`:
 ///
 /// function Seq#Contains<T>(Seq T, T): bool;
 
+(*| Holds when `v` is an element of `s` (Dafny's `Seq#Contains`).
+
+    The facts characterize it as the existence of an index `i` with
+    `index s i == v`. It is a `prop`, so it works for element types without
+    decidable equality. *)
 val contains: #ty: Type -> seq ty -> ty -> prop
 
 /// We represent the Dafny function `Seq#Take` with `take`:
 ///
 /// function Seq#Take<T>(s: Seq T, howMany: int): Seq T;
 
+(*| Returns the first `howMany` elements of `s` (Dafny's `Seq#Take`).
+
+    The caller must prove `howMany <= length s`. With `FStar.Sequence` open,
+    the facts are ambient:
+
+    ```fstar
+    let take_of_append (s t: seq int)
+      : Lemma (take (s $+ t) (length s) == s)
+      = ()
+    ```
+
+    See also `FStar.Sequence.Base.drop` and `FStar.Sequence.Util.slice`. *)
 val take: #ty: Type -> s: seq ty -> howMany: nat{howMany <= length s} -> seq ty
 
 /// We represent the Dafny function `Seq#Drop` with `drop`:
 ///
 /// function Seq#Drop<T>(s: Seq T, howMany: int): Seq T;
 
+(*| Returns `s` without its first `howMany` elements (Dafny's `Seq#Drop`).
+
+    The caller must prove `howMany <= length s`. The element at index `j` of
+    the result is the element at index `j + howMany` of `s`. *)
 val drop: #ty: Type -> s: seq ty -> howMany: nat{howMany <= length s} -> seq ty
 
 /// We represent the Dafny function `Seq#Equal` with `equal`.
@@ -120,7 +182,14 @@ val drop: #ty: Type -> s: seq ty -> howMany: nat{howMany <= length s} -> seq ty
 ///
 /// We also provide the infix symbol `$==` for it.
 
+(*| Holds when two sequences have the same length and the same element at
+    each index (Dafny's `Seq#Equal`).
+
+    The facts state extensionality: `equal s0 s1` implies `s0 == s1`. The
+    infix form is `FStar.Sequence.Base.op_Dollar_Equals_Equals`, written
+    `s0 $== s1`. *)
 val equal: #ty: Type -> seq ty -> seq ty -> prop
+(*| Infix notation `s0 $== s1` for `FStar.Sequence.Base.equal`. *)
 let ($==) = equal
 
 /// Instead of representing the Dafny function `Seq#SameUntil`, which
@@ -131,13 +200,28 @@ let ($==) = equal
 ///
 /// We also provide the infix notation `$<=` for it.
 
+(*| Holds when `s0` is a prefix of `s1`: it is no longer, and agrees with
+    `s1` at each of its indices.
+
+    It replaces Dafny's `Seq#SameUntil`, which Dafny uses only for prefixes.
+    The infix form is `FStar.Sequence.Base.op_Dollar_Less_Equals`, written
+    `s0 $<= s1`. *)
 val is_prefix: #ty: Type -> seq ty -> seq ty -> prop
+(*| Infix notation `s0 $<= s1` for `FStar.Sequence.Base.is_prefix`. *)
 let ($<=) = is_prefix
 
 /// We represent the Dafny function `Seq#Rank` with `rank`.
 ///
 /// function Seq#Rank<T>(Seq T): int;
 
+(*| The identity function, used to state termination facts about sequences
+    (Dafny's `Seq#Rank`).
+
+    The facts state `rank v == v`, that each element of `s` precedes `s` in
+    the `<<` ordering, and that `drop s i` precedes `s` when `0 < i`. For
+    `take` and for removing a middle part, the corresponding facts are
+    stated on lengths instead, so a `decreases` clause should use `length`
+    in those cases. *)
 val rank: #ty: Type -> ty -> ty
 
 (**
@@ -561,6 +645,24 @@ private let drop_then_drop_fact (_: squash (drop_length_fact u#a)) =
   One can bring all these facts into scope with `all_dafny_seq_facts_lemma ()`.
 **)
 
+(*| The conjunction of the facts that specify the operations of
+    `FStar.Sequence.Base`: the F\* version of the sequence axioms of the
+    Dafny prelude, for element types in universe `a`.
+
+    The facts cover the lengths of the results of each operation, indexing
+    into `build`, `singleton`, `append`, `update`, `take` and `drop`,
+    `contains`, the definitions of `equal` and `is_prefix`, extensionality,
+    interactions of `take` and `drop` with `append`, `update` and `build`,
+    and the ranking facts used for termination (see
+    `FStar.Sequence.Base.rank`). Each is a universally quantified
+    proposition with the SMT patterns of the corresponding Dafny axiom; the
+    individual facts are private.
+
+    They are not F\* axioms: `FStar.Sequence.Base.all_seq_facts_lemma`
+    proves them from the implementation. Call that lemma to put them in the
+    proof context, or depend on `FStar.Sequence.Ambient` (or
+    `FStar.Sequence`) to have them available whenever a sequence type
+    occurs. *)
 let all_seq_facts =
     length_of_empty_is_zero_fact u#a
   /\ length_zero_implies_empty_fact u#a
@@ -600,4 +702,17 @@ let all_seq_facts =
   /\ take_zero_fact u#a
   /\ drop_then_drop_fact u#a ()
 
+(*| Proves `FStar.Sequence.Base.all_seq_facts`; call it to bring every
+    sequence fact into the SMT context of the current proof.
+
+    ```fstar
+    let append_length (s t: FStar.Sequence.Base.seq int)
+      : Lemma (FStar.Sequence.Base.length (FStar.Sequence.Base.append s t) =
+               FStar.Sequence.Base.length s + FStar.Sequence.Base.length t)
+      = FStar.Sequence.Base.all_seq_facts_lemma ()
+    ```
+
+    Calling the lemma in the body does not help to typecheck the statement
+    itself, for instance a refinement such as the bound of `take`. Use
+    `FStar.Sequence.Ambient` for such statements. *)
 val all_seq_facts_lemma : unit -> Lemma (all_seq_facts u#a)

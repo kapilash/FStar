@@ -15,8 +15,12 @@
 *)
 module FStar.Parse
 
-(** A primitive parser for booleans *)
+(*| Primitive parser for booleans, returning `None` on failure.
+
+    Total: the interface does not specify which strings are accepted or what they map to. *)
 val bool_of_string: string -> Tot (option bool)
 
-(** A primitive parser for [int] *)
+(*| Primitive parser for `int`, returning `None` on failure.
+
+    Total: the interface does not specify which strings are accepted or what they map to. *)
 val int_of_string: string -> Tot (option int)

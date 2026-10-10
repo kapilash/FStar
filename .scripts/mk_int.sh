@@ -36,6 +36,9 @@ module FStar.Int$i
 
 (**** THIS MODULE IS GENERATED AUTOMATICALLY USING [mk_int.sh], DO NOT EDIT DIRECTLY ****)
 
+(*| The bit width of \`t\`.
+
+    Values of \`t\` are two's complement integers ranging from \`FStar.Int.min_int n\` to \`FStar.Int.max_int n\`. *)
 unfold let n = $i
 
 EOF
@@ -43,6 +46,9 @@ EOF
   if [ $i -eq 128 ]; then
       cat >> $f <<EOF
 
+(*| Full product of two signed 64-bit integers as a signed 128-bit integer: \`v (mul_wide a b) == FStar.Int64.v a * FStar.Int64.v b\`.
+
+    No precondition: the product of two signed 64-bit values always fits in 128 bits. The implementation assumes this bound rather than proving it. *)
 val mul_wide: a:Int64.t -> b:Int64.t -> Pure t
   (requires True)
   (ensures (fun c -> v c = Int64.v a * Int64.v b))
@@ -111,12 +117,16 @@ module FStar.UInt$i
 
 (**** THIS MODULE IS GENERATED AUTOMATICALLY USING [mk_int.sh], DO NOT EDIT DIRECTLY ****)
 
+(*| The bit width of \`t\`.
+
+    Values of \`t\` range from \`0\` to \`pow2 n - 1\`. *)
 unfold let n = $i
 
 EOF
   cat $D/FStar.UIntN.fstip >> $f
   if [ $i -eq 8 ]; then
     echo >> $f
+    echo '(*| An abbreviation for `t`, the unsigned 8-bit machine integer type, conventionally used for bytes. *)' >> $f
     echo "unfold inline_for_extraction type byte = t" >> $f
   fi
   if [ $i -eq 128 ]; then

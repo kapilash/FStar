@@ -26,12 +26,16 @@ module ID = FStar.IndefiniteDescription
 
 (**** Rational helpers *)
 
+(*| The rational `0` is strictly below the rational `1`. *)
 let qzero_lt_one () : Lemma (Q.lt Q.zero Q.one) = Q.of_int_lt 0 1
 
+(*| The rational `0` is strictly below the rational `2`. *)
 let qzero_lt_two () : Lemma (Q.lt Q.zero Q.two) = Q.of_int_lt 0 2
 
+(*| The rational `2` is not zero. *)
 let qtwo_ne_zero () : Lemma (Q.two =!= Q.zero) = Q.of_int_inj 2 0
 
+(*| Multiplying two strict inequalities between positive rationals: if `0 < a < a'` and `0 < b < b'` then `a * b < a' * b'`. *)
 let qmul_lt2 (a a' b b':Q.rat)
   : Lemma (requires Q.lt Q.zero a /\ Q.lt a a' /\ Q.lt Q.zero b /\ Q.lt b b')
           (ensures  Q.lt (Q.mul a b) (Q.mul a' b'))
@@ -41,13 +45,16 @@ let qmul_lt2 (a a' b b':Q.rat)
     Q.mul_comm b a'; Q.mul_comm b' a';
     Q.lt_trans (Q.mul a b) (Q.mul a' b) (Q.mul a' b')
 
+(*| Multiplying on the right by a positive rational `b` preserves `<=`: if `a <= a'` then `a * b <= a' * b`. *)
 let qmul_le_l (a a' b:Q.rat)
   : Lemma (requires Q.lt Q.zero b /\ Q.le a a')
           (ensures  Q.le (Q.mul a b) (Q.mul a' b))
   = Q.lt_mul_pos a a' b
 
+(*| Half of a rational: `e * (1 / 2)`. *)
 let qhalf (e:Q.rat) : Q.rat = Q.mul e (Q.inv Q.two)
 
+(*| Two halves make the whole: `qhalf e + qhalf e == e`. *)
 let qhalf_sum (e:Q.rat) : Lemma (Q.add (qhalf e) (qhalf e) == e)
   = qtwo_ne_zero ();
     Q.of_int_add 1 1;
@@ -58,10 +65,12 @@ let qhalf_sum (e:Q.rat) : Lemma (Q.add (qhalf e) (qhalf e) == e)
     Q.distrib e (Q.inv Q.two) (Q.inv Q.two);
     Q.mul_one e
 
+(*| Half of a positive rational is positive. *)
 let qhalf_pos (e:Q.rat)
   : Lemma (requires Q.lt Q.zero e) (ensures Q.lt Q.zero (qhalf e))
   = qzero_lt_two (); Q.inv_pos Q.two; Q.mul_pos e (Q.inv Q.two)
 
+(*| Dividing by a nonzero rational `d` and multiplying back is the identity: `(q / d) * d == q`. *)
 let qmul_div (q d:Q.rat)
   : Lemma (requires d =!= Q.zero) (ensures Q.mul (Q.div q d) d == q)
   = Q.mul_assoc q (Q.inv d) d;
@@ -69,6 +78,7 @@ let qmul_div (q d:Q.rat)
     Q.inv_num_den d;
     Q.mul_one q
 
+(*| Moving a positive divisor across a strict inequality: for `0 < d`, `q < c * d` iff `q / d < c`. *)
 let qlt_div (q c d:Q.rat)
   : Lemma (requires Q.lt Q.zero d)
           (ensures  Q.lt q (Q.mul c d) <==> Q.lt (Q.div q d) c)
@@ -78,19 +88,23 @@ let qlt_div (q c d:Q.rat)
 
 (**** Multiplication of cuts, positive part *)
 
-/// [mulp x y] is the set of rationals below some product [a*b] with [a] a
-/// positive member of [x] and [b] a positive member of [y], together with all
-/// the negative rationals.  It is a cut for *any* pair of cuts, and it is the
-/// product exactly when both arguments are nonnegative.
+(*| The predicate underlying the product of nonnegative cuts: `q` is negative, or `q < a * b` for some positive member `a` of `x` and positive member `b` of `y`.
+
+    It is a cut for any pair of cuts (packaged by `FStar.Real.Dedekind.Mul.cpmul`), but it is the product only when both arguments are nonnegative; `FStar.Real.Dedekind.Mul.cmul` handles the other signs. *)
 let mulp (x y:B.cut) (q:Q.rat) : prop =
   Q.lt q Q.zero \/
   (exists (a b:Q.rat).
       x a /\ y b /\ Q.lt Q.zero a /\ Q.lt Q.zero b /\ Q.lt q (Q.mul a b))
 
+(*| The predicate `mulp x y` is nonempty: it contains every negative rational.
+
+    First of the four cut conditions for `FStar.Real.Dedekind.Mul.cpmul`. *)
 let mul_ne (x y:B.cut) : Lemma (exists (q:Q.rat). mulp x y q)
   = introduce exists (q:Q.rat). mulp x y q with (Q.below Q.zero) and ()
 
-/// A positive rational strictly above every positive member of [c].
+(*| A positive rational strictly above every positive member of the cut `c` (ghost).
+
+    It is either `1` or a non-member of `c`; used to show that `FStar.Real.Dedekind.Mul.mulp` is not everything. *)
 let bnd (c:B.cut)
   : Ghost Q.rat
       (requires True)
@@ -114,6 +128,9 @@ let bnd (c:B.cut)
       a'
     end
 
+(*| The predicate `mulp x y` is not everything: the product of the bounds `bnd x` and `bnd y` is not in it.
+
+    Second of the four cut conditions for `FStar.Real.Dedekind.Mul.cpmul`. *)
 let mul_nf (x y:B.cut) : Lemma (exists (q:Q.rat). ~(mulp x y q))
   = let mx = bnd x in
     let my = bnd y in
@@ -129,6 +146,9 @@ let mul_nf (x y:B.cut) : Lemma (exists (q:Q.rat). ~(mulp x y q))
     end;
     introduce exists (q:Q.rat). ~(mulp x y q) with m and ()
 
+(*| The predicate `mulp x y` is downward closed: if `v` is in it and `u < v` then `u` is in it.
+
+    Third of the four cut conditions for `FStar.Real.Dedekind.Mul.cpmul`. *)
 let mul_dc (x y:B.cut)
   : Lemma (forall (u v:Q.rat). (mulp x y v /\ Q.lt u v) ==> mulp x y u)
   = introduce forall (u v:Q.rat). (mulp x y v /\ Q.lt u v) ==> mulp x y u
@@ -155,6 +175,9 @@ let mul_dc (x y:B.cut)
 /// into its body, so that shape proves the clause with the clause itself in
 /// scope, and every witness the existential produces re-triggers the
 /// quantifier. The [forall] is introduced at the point of use instead.
+(*| Every member `u` of `mulp x y` has a strictly larger member, the midpoint between `u` and `0` or between `u` and a witnessing product.
+
+    Pointwise form of the no-greatest-element condition, consumed by `FStar.Real.Dedekind.Mul.mul_op`. *)
 let mul_op_aux (x y:B.cut) (u:Q.rat)
   : Lemma (requires mulp x y u)
           (ensures exists (v:Q.rat). mulp x y v /\ Q.lt u v)
@@ -181,29 +204,43 @@ let mul_op_aux (x y:B.cut) (u:Q.rat)
       with (Q.mid u (Q.mul a b)) and ()
     end
 
+(*| The predicate `mulp x y` has no greatest element (`FStar.Real.Dedekind.Base.no_greatest`).
+
+    Last of the four cut conditions for `FStar.Real.Dedekind.Mul.cpmul`. *)
 let mul_op (x y:B.cut) : Lemma (B.no_greatest (mulp x y))
   = B.no_greatest_intro (mulp x y) (mul_op_aux x y)
 
+(*| The product of cuts on the nonnegative cone, with membership given by `FStar.Real.Dedekind.Mul.mulp`.
+
+    It is a cut for any arguments, and always nonnegative (`FStar.Real.Dedekind.Mul.cpmul_nonneg`), but it is the real product only when both arguments are nonnegative. The full product is `FStar.Real.Dedekind.Mul.cmul`. *)
 let cpmul (x y:B.cut) : c:B.cut{forall (q:Q.rat). c q <==> mulp x y q} =
   mul_ne x y; mul_nf x y; mul_dc x y; mul_op x y;
   B.mk_cut (mulp x y)
 
 (**** The nonnegative cone *)
 
+(*| Membership in the zero cut: `q` is in `czero` iff `q < 0`. *)
 let czero_mem (q:Q.rat) : Lemma (A.czero q <==> Q.lt q Q.zero)
   = B.rat_cut_mem Q.zero q
 
+(*| The unit cut: the cut of the rational `1`, that is the rationals below `1`.
+
+    Identity for `FStar.Real.Dedekind.Mul.cmul` (`FStar.Real.Dedekind.Mul.cmul_one`). *)
 let cone : B.cut = B.rat_cut Q.one
 
+(*| Membership in the unit cut: `q` is in `cone` iff `q < 1`. *)
 let cone_mem (q:Q.rat) : Lemma (cone q <==> Q.lt q Q.one)
   = B.rat_cut_mem Q.one q
 
+(*| A cut is nonnegative when `czero` is below it for `FStar.Real.Dedekind.Base.cle`, that is when it contains every negative rational. *)
 let nonneg (x:B.cut) : prop = B.cle A.czero x
 
+(*| A nonnegative cut contains every negative rational. *)
 let nonneg_neg (x:B.cut) (q:Q.rat)
   : Lemma (requires nonneg x /\ Q.lt q Q.zero) (ensures x q)
   = czero_mem q
 
+(*| The cone product `cpmul x y` is always nonnegative, whatever the signs of `x` and `y`. *)
 let cpmul_nonneg (x y:B.cut) : Lemma (nonneg (cpmul x y))
   = introduce forall (q:Q.rat). A.czero q ==> cpmul x y q
     with introduce A.czero q ==> cpmul x y q
@@ -211,6 +248,9 @@ let cpmul_nonneg (x y:B.cut) : Lemma (nonneg (cpmul x y))
 
 (**** Commutativity *)
 
+(*| One inclusion of commutativity of the cone product: `cpmul x y` is below `cpmul y x`.
+
+    Used twice by `FStar.Real.Dedekind.Mul.cpmul_comm`. *)
 let cpmul_comm_le (x y:B.cut) : Lemma (B.cle (cpmul x y) (cpmul y x))
   = introduce forall (q:Q.rat). cpmul x y q ==> cpmul y x q
     with introduce cpmul x y q ==> cpmul y x q
@@ -228,6 +268,7 @@ let cpmul_comm_le (x y:B.cut) : Lemma (B.cle (cpmul x y) (cpmul y x))
            with b a and ()
          end
 
+(*| The cone product is commutative: `cpmul x y == cpmul y x`. *)
 let cpmul_comm (x y:B.cut) : Lemma (cpmul x y == cpmul y x)
   = cpmul_comm_le x y;
     cpmul_comm_le y x;
@@ -235,6 +276,7 @@ let cpmul_comm (x y:B.cut) : Lemma (cpmul x y == cpmul y x)
 
 (**** Monotonicity *)
 
+(*| The cone product is monotone in its second argument: if `cle y z` then `cle (cpmul x y) (cpmul x z)`. *)
 let cpmul_mono2 (x y z:B.cut)
   : Lemma (requires B.cle y z) (ensures B.cle (cpmul x y) (cpmul x z))
   = introduce forall (q:Q.rat). cpmul x y q ==> cpmul x z q
@@ -252,6 +294,7 @@ let cpmul_mono2 (x y z:B.cut)
 
 (**** Zero *)
 
+(*| The cone product with zero on the right is zero: `cpmul x czero == czero`. *)
 let cpmul_zero (x:B.cut) : Lemma (cpmul x A.czero == A.czero)
   = introduce forall (q:Q.rat). cpmul x A.czero q <==> A.czero q
     with begin
@@ -268,6 +311,7 @@ let cpmul_zero (x:B.cut) : Lemma (cpmul x A.czero == A.czero)
 
 (**** Unit *)
 
+(*| A nonnegative rational divided by a positive rational is nonnegative. *)
 let qdiv_nonneg (a d:Q.rat)
   : Lemma (requires Q.le Q.zero a /\ Q.lt Q.zero d)
           (ensures  Q.le Q.zero (Q.div a d))
@@ -277,6 +321,9 @@ let qdiv_nonneg (a d:Q.rat)
     Q.mul_comm Q.zero (Q.inv d);
     Q.mul_zero (Q.inv d)
 
+(*| One inclusion of the unit law: for nonnegative `x`, `cpmul x cone` is below `x`.
+
+    Used by `FStar.Real.Dedekind.Mul.cpmul_one`. *)
 let cpmul_one_le (x:B.cut)
   : Lemma (requires nonneg x) (ensures B.cle (cpmul x cone) x)
   = introduce forall (q:Q.rat). cpmul x cone q ==> x q
@@ -300,6 +347,9 @@ let cpmul_one_le (x:B.cut)
       end
     end
 
+(*| The other inclusion of the unit law: for nonnegative `x`, `x` is below `cpmul x cone`.
+
+    Used by `FStar.Real.Dedekind.Mul.cpmul_one`. *)
 let cpmul_one_ge (x:B.cut)
   : Lemma (requires nonneg x) (ensures B.cle x (cpmul x cone))
   = introduce forall (a:Q.rat). x a ==> cpmul x cone a
@@ -328,30 +378,35 @@ let cpmul_one_ge (x:B.cut)
       with a2 b and ()
     end
 
+(*| The unit cut is a right identity for the cone product of a nonnegative cut: `cpmul x cone == x` when `nonneg x`. *)
 let cpmul_one (x:B.cut)
   : Lemma (requires nonneg x) (ensures cpmul x cone == x)
   = cpmul_one_le x; cpmul_one_ge x; B.cle_antisym (cpmul x cone) x
 
 (**** More rational rearrangements *)
 
+(*| Rational rearrangement exchanging the middle summands: `(p + q) + (r + s) == (p + r) + (q + s)`. *)
 let qshuffle4 (p q r s:Q.rat)
   : Lemma (Q.add (Q.add p q) (Q.add r s) == Q.add (Q.add p r) (Q.add q s))
   = Q.add_assoc p q (Q.add r s);
     Q.add_assoc q r s; Q.add_comm q r; Q.add_assoc r q s;
     Q.add_assoc p r (Q.add q s)
 
+(*| A rational difference is positive iff the order holds: `0 < v - u` iff `u < v`. *)
 let qsub_pos (u v:Q.rat)
   : Lemma (Q.lt Q.zero (Q.sub v u) <==> Q.lt u v)
   = Q.lt_add_r Q.zero (Q.sub v u) u;
     A.qadd_zero_l u;
     A.qsub_add v u
 
+(*| A rational difference is negative iff the order holds: `u - v < 0` iff `u < v`. *)
 let qsub_neg (u v:Q.rat)
   : Lemma (Q.lt (Q.sub u v) Q.zero <==> Q.lt u v)
   = Q.lt_add_r (Q.sub u v) Q.zero v;
     A.qadd_zero_l v;
     A.qsub_add u v
 
+(*| Subtracting a positive rational makes it smaller: `a - e < a` when `0 < e`. *)
 let qsub_smaller (a e:Q.rat)
   : Lemma (requires Q.lt Q.zero e) (ensures Q.lt (Q.sub a e) a)
   = A.qneg_lt_zero' e;
@@ -359,11 +414,13 @@ let qsub_smaller (a e:Q.rat)
     A.qadd_zero_l a;
     Q.add_comm (Q.neg e) a
 
+(*| Rational rearrangement: `(a - e) + (b - e) == (a + b) - (e + e)`. *)
 let qsub2 (a b e:Q.rat)
   : Lemma (Q.add (Q.sub a e) (Q.sub b e) == Q.sub (Q.add a b) (Q.add e e))
   = qshuffle4 a (Q.neg e) b (Q.neg e);
     A.qneg_add e e
 
+(*| Double subtraction on rationals: `s - (s - q) == q`. *)
 let qsub_sub (s q:Q.rat) : Lemma (Q.sub s (Q.sub s q) == q)
   = A.qneg_add s (Q.neg q);
     Q.neg_neg q;
@@ -371,6 +428,7 @@ let qsub_sub (s q:Q.rat) : Lemma (Q.sub s (Q.sub s q) == q)
     Q.add_neg s;
     A.qadd_zero_l q
 
+(*| Half of a negative rational is negative. *)
 let qhalf_neg (q:Q.rat)
   : Lemma (requires Q.lt q Q.zero) (ensures Q.lt (qhalf q) Q.zero)
   = qzero_lt_two ();
@@ -379,14 +437,17 @@ let qhalf_neg (q:Q.rat)
     Q.mul_comm Q.zero (Q.inv Q.two);
     Q.mul_zero (Q.inv Q.two)
 
+(*| Transitivity mixing strict and non-strict rational order: `p < q` and `q <= r` imply `p < r`. *)
 let qlt_le_trans (p q r:Q.rat)
   : Lemma (requires Q.lt p q /\ Q.le q r) (ensures Q.lt p r)
   = introduce Q.lt q r ==> Q.lt p r with Q.lt_trans p q r
 
+(*| Transitivity mixing non-strict and strict rational order: `p <= q` and `q < r` imply `p < r`. *)
 let qle_lt_trans (p q r:Q.rat)
   : Lemma (requires Q.le p q /\ Q.lt q r) (ensures Q.lt p r)
   = introduce Q.lt p q ==> Q.lt p r with Q.lt_trans p q r
 
+(*| The sum of two positive rationals is positive. *)
 let qadd_pos (u v:Q.rat)
   : Lemma (requires Q.lt Q.zero u /\ Q.lt Q.zero v)
           (ensures  Q.lt Q.zero (Q.add u v))
@@ -394,12 +455,15 @@ let qadd_pos (u v:Q.rat)
     A.qadd_zero_l v;
     Q.lt_trans Q.zero v (Q.add u v)
 
+(*| Adding a negative rational makes a sum smaller: `u + v < v` when `u < 0`. *)
 let qlt_add_neg (u v:Q.rat)
   : Lemma (requires Q.lt u Q.zero) (ensures Q.lt (Q.add u v) v)
   = Q.lt_add_r u Q.zero v;
     A.qadd_zero_l v
 
-/// The larger of two positive members of a cut, still a member.
+(*| The larger of two positive members `a1` and `a2` of a cut, which is again a positive member (ghost).
+
+    See `FStar.Real.Dedekind.Mul.qmax_in'` for the variant where only one member is known positive. *)
 let qmax_in (c:B.cut) (a1 a2:Q.rat)
   : Ghost Q.rat
       (requires c a1 /\ c a2 /\ Q.lt Q.zero a1 /\ Q.lt Q.zero a2)
@@ -407,6 +471,7 @@ let qmax_in (c:B.cut) (a1 a2:Q.rat)
   = Q.lt_total a1 a2;
     if Q.lt a1 a2 then a2 else a1
 
+(*| Sign of a factor from the sign of a product: if `0 < a` and `0 < a * b` then `0 < b`. *)
 let mulpos_rev (a b:Q.rat)
   : Lemma (requires Q.lt Q.zero a /\ Q.lt Q.zero (Q.mul a b))
           (ensures  Q.lt Q.zero b)
@@ -422,8 +487,9 @@ let mulpos_rev (a b:Q.rat)
       Q.lt_asym Q.zero (Q.mul a b)
     end
 
-/// Membership in [cpmul] from a single pair of witnesses, with the positivity
-/// of the second one deduced rather than assumed.
+(*| Membership in `cpmul x y` from a single pair of witnesses: if `a` is a positive member of `x`, `b` a member of `y` and `u < a * b`, then `u` is in `cpmul x y`.
+
+    The positivity of `b` is not required when `u` is nonnegative, since it then follows from `0 <= u < a * b`. *)
 let mem1 (x y:B.cut) (a b u:Q.rat)
   : Lemma (requires x a /\ y b /\ Q.lt Q.zero a /\ Q.lt u (Q.mul a b))
           (ensures  cpmul x y u)
@@ -442,6 +508,9 @@ let mem1 (x y:B.cut) (a b u:Q.rat)
 
 (**** Associativity on the cone *)
 
+(*| One inclusion of associativity of the cone product: `cpmul (cpmul x y) z` is below `cpmul x (cpmul y z)`.
+
+    The other inclusion follows by commutativity in `FStar.Real.Dedekind.Mul.cpmul_assoc`. *)
 let cpmul_assoc_le (x y z:B.cut)
   : Lemma (B.cle (cpmul (cpmul x y) z) (cpmul x (cpmul y z)))
   = introduce forall (q:Q.rat).
@@ -481,6 +550,7 @@ let cpmul_assoc_le (x y z:B.cut)
       end
     end
 
+(*| The cone product is associative: `cpmul (cpmul x y) z == cpmul x (cpmul y z)`, for cuts of any sign. *)
 let cpmul_assoc (x y z:B.cut)
   : Lemma (cpmul (cpmul x y) z == cpmul x (cpmul y z))
   = cpmul_assoc_le x y z;
@@ -493,6 +563,7 @@ let cpmul_assoc (x y z:B.cut)
 
 (**** Distributivity on the cone *)
 
+(*| Adding a nonnegative cut makes a cut larger: `cle z (cadd y z)` when `nonneg y`. *)
 let cadd_upper (y z:B.cut)
   : Lemma (requires nonneg y) (ensures B.cle z (A.cadd y z))
   = introduce forall (b:Q.rat). z b ==> A.cadd y z b
@@ -506,10 +577,14 @@ let cadd_upper (y z:B.cut)
       with (Q.sub b b') b' and ()
     end
 
+(*| Adding a nonnegative cut on the right makes a cut larger: `cle y (cadd y z)` when `nonneg z`. *)
 let cadd_upper_l (y z:B.cut)
   : Lemma (requires nonneg z) (ensures B.cle y (A.cadd y z))
   = cadd_upper z y; A.cadd_comm z y
 
+(*| One inclusion of distributivity of the cone product: `cpmul x (cadd y z)` is below `cadd (cpmul x y) (cpmul x z)`, for cuts of any sign.
+
+    Used by `FStar.Real.Dedekind.Mul.cpmul_distrib`. *)
 let cpmul_distrib_le (x y z:B.cut)
   : Lemma (B.cle (cpmul x (A.cadd y z)) (A.cadd (cpmul x y) (cpmul x z)))
   = introduce forall (q:Q.rat).
@@ -552,6 +627,9 @@ let cpmul_distrib_le (x y z:B.cut)
       end
     end
 
+(*| The other inclusion of distributivity of the cone product: `cadd (cpmul x y) (cpmul x z)` is below `cpmul x (cadd y z)` when `y` and `z` are nonnegative.
+
+    Used by `FStar.Real.Dedekind.Mul.cpmul_distrib`. *)
 let cpmul_distrib_ge (x y z:B.cut)
   : Lemma (requires nonneg y /\ nonneg z)
           (ensures B.cle (A.cadd (cpmul x y) (cpmul x z)) (cpmul x (A.cadd y z)))
@@ -603,6 +681,7 @@ let cpmul_distrib_ge (x y z:B.cut)
       end
     end
 
+(*| The cone product distributes over addition of nonnegative cuts: `cpmul x (cadd y z) == cadd (cpmul x y) (cpmul x z)` when `nonneg y` and `nonneg z`. *)
 let cpmul_distrib (x y z:B.cut)
   : Lemma (requires nonneg y /\ nonneg z)
           (ensures cpmul x (A.cadd y z) == A.cadd (cpmul x y) (cpmul x z))
@@ -614,34 +693,48 @@ let cpmul_distrib (x y z:B.cut)
 
 #push-options "--z3rlimit 60"
 
+(*| Zero is a left identity for addition of cuts: `cadd czero x == x`.
+
+    Left-hand counterpart of `FStar.Real.Dedekind.Add.cadd_zero`. *)
 let cadd_zero_l (x:B.cut) : Lemma (A.cadd A.czero x == x)
   = A.cadd_comm A.czero x; A.cadd_zero x
 
+(*| The negation of a cut plus the cut is zero: `cadd (copp x) x == czero`.
+
+    Left-hand counterpart of `FStar.Real.Dedekind.Add.cadd_opp`. *)
 let cadd_opp_l (x:B.cut) : Lemma (A.cadd (A.copp x) x == A.czero)
   = A.cadd_comm (A.copp x) x; A.cadd_opp x
 
+(*| Right cancellation for addition of cuts: `cadd x z == cadd y z` implies `x == y`.
+
+    See `FStar.Real.Dedekind.Mul.cadd_cancel` for the equivalence. *)
 let cadd_cancel_fwd (x y z:B.cut)
   : Lemma (requires A.cadd x z == A.cadd y z) (ensures x == y)
   = A.cadd_assoc x z (A.copp z); A.cadd_assoc y z (A.copp z);
     A.cadd_opp z; A.cadd_zero x; A.cadd_zero y
 
+(*| Addition of cuts is cancellative on the right: `cadd x z == cadd y z` iff `x == y`. *)
 let cadd_cancel (x y z:B.cut)
   : Lemma (A.cadd x z == A.cadd y z <==> x == y)
   = introduce A.cadd x z == A.cadd y z ==> x == y with cadd_cancel_fwd x y z
 
+(*| Negation of cuts is an involution: `copp (copp x) == x`. *)
 let copp_copp (x:B.cut) : Lemma (A.copp (A.copp x) == x)
   = A.cadd_opp (A.copp x);
     A.cadd_comm (A.copp x) (A.copp (A.copp x));
     A.cadd_opp x;
     cadd_cancel (A.copp (A.copp x)) x (A.copp x)
 
+(*| Negation of cuts is injective: `copp x == copp y` implies `x == y`. *)
 let copp_inj (x y:B.cut)
   : Lemma (requires A.copp x == A.copp y) (ensures x == y)
   = copp_copp x; copp_copp y
 
+(*| The negation of the zero cut is zero: `copp czero == czero`. *)
 let copp_czero () : Lemma (A.copp A.czero == A.czero)
   = A.cadd_opp A.czero; cadd_zero_l (A.copp A.czero)
 
+(*| Rearrangement of cut sums exchanging the middle summands: `(a + b) + (c + d) == (a + c) + (b + d)` for `cadd`. *)
 let cshuffle4 (a b c d:B.cut)
   : Lemma (A.cadd (A.cadd a b) (A.cadd c d) ==
            A.cadd (A.cadd a c) (A.cadd b d))
@@ -649,6 +742,7 @@ let cshuffle4 (a b c d:B.cut)
     A.cadd_assoc b c d; A.cadd_comm b c; A.cadd_assoc c b d;
     A.cadd_assoc a c (A.cadd b d)
 
+(*| Negation of cuts distributes over addition: `copp (cadd x y) == cadd (copp x) (copp y)`. *)
 let copp_cadd (x y:B.cut)
   : Lemma (A.copp (A.cadd x y) == A.cadd (A.copp x) (A.copp y))
   = cshuffle4 (A.copp x) (A.copp y) x y;
@@ -657,6 +751,7 @@ let copp_cadd (x y:B.cut)
     cadd_cancel (A.cadd (A.copp x) (A.copp y)) (A.copp (A.cadd x y))
                 (A.cadd x y)
 
+(*| Negation of cuts reverses strict order: `clt (copp y) (copp x)` iff `clt x y`. *)
 let clt_copp (x y:B.cut)
   : Lemma (B.clt (A.copp y) (A.copp x) <==> B.clt x y)
   = A.cadd_mono_rev (A.copp y) (A.copp x) (A.cadd x y);
@@ -664,6 +759,7 @@ let clt_copp (x y:B.cut)
     A.cadd_assoc x y (A.copp y); A.cadd_opp y; A.cadd_zero x;
     A.cadd_assoc (A.copp x) x y; cadd_opp_l x; cadd_zero_l y
 
+(*| Negation of cuts reverses the order: `cle x y` iff `cle (copp y) (copp x)`. *)
 let cle_copp (x y:B.cut)
   : Lemma (B.cle x y <==> B.cle (A.copp y) (A.copp x))
   = clt_copp x y;
@@ -671,11 +767,15 @@ let cle_copp (x y:B.cut)
 
 (**** The sign of a cut *)
 
+(*| Every cut is nonnegative or has a nonnegative negation: `nonneg x` or `nonneg (copp x)`.
+
+    This follows from totality of the order and is what drives the sign case analysis of `FStar.Real.Dedekind.Mul.cmul`. *)
 let nonneg_or (x:B.cut) : Lemma (nonneg x \/ nonneg (A.copp x))
   = B.cle_total A.czero x;
     cle_copp x A.czero;
     copp_czero ()
 
+(*| A cut that is nonnegative and whose negation is also nonnegative is zero. *)
 let nonneg_both (x:B.cut)
   : Lemma (requires nonneg x /\ nonneg (A.copp x)) (ensures x == A.czero)
   = cle_copp A.czero x;
@@ -683,6 +783,7 @@ let nonneg_both (x:B.cut)
     B.cle_antisym (A.copp x) A.czero;
     copp_copp x
 
+(*| The unit cut is nonnegative. *)
 let nonneg_cone () : Lemma (nonneg cone)
   = introduce forall (q:Q.rat). A.czero q ==> cone q
     with introduce A.czero q ==> cone q
@@ -691,6 +792,7 @@ let nonneg_cone () : Lemma (nonneg cone)
       Q.lt_trans q Q.zero Q.one
     end
 
+(*| The sum of two nonnegative cuts is nonnegative. *)
 let cadd_nonneg (y z:B.cut)
   : Lemma (requires nonneg y /\ nonneg z) (ensures nonneg (A.cadd y z))
   = cadd_upper y z;
@@ -699,6 +801,9 @@ let cadd_nonneg (y z:B.cut)
 (**** Multiplication, all signs *)
 
 
+(*| The product of two Dedekind cuts (ghost), defined by sign case analysis on top of the cone product `FStar.Real.Dedekind.Mul.cpmul`.
+
+    With `x` and `y` nonnegative it is `cpmul x y`; otherwise the negative arguments are negated, multiplied with `cpmul`, and the result is negated when exactly one argument was negative (see `FStar.Real.Dedekind.Mul.cmul_pp`, `FStar.Real.Dedekind.Mul.cmul_pn`, `FStar.Real.Dedekind.Mul.cmul_np` and `FStar.Real.Dedekind.Mul.cmul_nn`). Nonnegativity is not decidable, so the case split uses `FStar.IndefiniteDescription.strong_excluded_middle` and the result is ghost. It is commutative, associative, distributes over `FStar.Real.Dedekind.Add.cadd`, has unit `FStar.Real.Dedekind.Mul.cone` and agrees with `FStar.Rational.mul` on rationals (`FStar.Real.Dedekind.Mul.rat_mul`). *)
 let cmul (x y:B.cut) : GTot B.cut =
   if ID.strong_excluded_middle (nonneg x)
   then (if ID.strong_excluded_middle (nonneg y)
@@ -708,63 +813,76 @@ let cmul (x y:B.cut) : GTot B.cut =
         then A.copp (cpmul (A.copp x) y)
         else cpmul (A.copp x) (A.copp y))
 
+(*| Unfolds `cmul` when both arguments are nonnegative: `cmul x y == cpmul x y`. *)
 let cmul_pp (x y:B.cut)
   : Lemma (requires nonneg x /\ nonneg y) (ensures cmul x y == cpmul x y) = ()
 
+(*| Unfolds `cmul` when only `y` is negative: `cmul x y == copp (cpmul x (copp y))`. *)
 let cmul_pn (x y:B.cut)
   : Lemma (requires nonneg x /\ ~(nonneg y))
           (ensures cmul x y == A.copp (cpmul x (A.copp y))) = ()
 
+(*| Unfolds `cmul` when only `x` is negative: `cmul x y == copp (cpmul (copp x) y)`. *)
 let cmul_np (x y:B.cut)
   : Lemma (requires ~(nonneg x) /\ nonneg y)
           (ensures cmul x y == A.copp (cpmul (A.copp x) y)) = ()
 
+(*| Unfolds `cmul` when both arguments are negative: `cmul x y == cpmul (copp x) (copp y)`. *)
 let cmul_nn (x y:B.cut)
   : Lemma (requires ~(nonneg x) /\ ~(nonneg y))
           (ensures cmul x y == cpmul (A.copp x) (A.copp y)) = ()
 
+(*| Multiplication of cuts is commutative: `cmul x y == cmul y x`. *)
 let cmul_comm (x y:B.cut) : Lemma (cmul x y == cmul y x)
   = cpmul_comm x y;
     cpmul_comm x (A.copp y);
     cpmul_comm (A.copp x) y;
     cpmul_comm (A.copp x) (A.copp y)
 
+(*| The cone product with zero on the left is zero: `cpmul czero y == czero`. *)
 let cpmul_zero_l (y:B.cut) : Lemma (cpmul A.czero y == A.czero)
   = cpmul_comm A.czero y; cpmul_zero y
 
+(*| Multiplying by zero on the left gives zero: `cmul czero y == czero`. *)
 let cmul_czero_l (y:B.cut) : Lemma (cmul A.czero y == A.czero)
   = copp_czero (); cpmul_zero_l y; cpmul_zero_l (A.copp y)
 
 /// The four sign cases of [cmul (copp x) y == copp (cmul x y)], each with the
 /// branch of [cmul] it lands in already resolved.
 
+(*| Sign case of `FStar.Real.Dedekind.Mul.cmul_copp_l` where both `x` and `copp x` are nonnegative, so `x` is zero. *)
 let cmul_copp_l0 (x y:B.cut)
   : Lemma (requires nonneg x /\ nonneg (A.copp x))
           (ensures  cmul (A.copp x) y == A.copp (cmul x y))
   = nonneg_both x; copp_czero (); cmul_czero_l y
 
+(*| Sign case of `FStar.Real.Dedekind.Mul.cmul_copp_l` where `x` is positive (nonnegative, with negation not nonnegative) and `y` is nonnegative. *)
 let cmul_copp_l1 (x y:B.cut)
   : Lemma (requires nonneg x /\ ~(nonneg (A.copp x)) /\ nonneg y)
           (ensures  cmul (A.copp x) y == A.copp (cmul x y))
   = cmul_np (A.copp x) y; copp_copp x; cmul_pp x y
 
+(*| Sign case of `FStar.Real.Dedekind.Mul.cmul_copp_l` where `x` is positive (nonnegative, with negation not nonnegative) and `y` is not nonnegative. *)
 let cmul_copp_l2 (x y:B.cut)
   : Lemma (requires nonneg x /\ ~(nonneg (A.copp x)) /\ ~(nonneg y))
           (ensures  cmul (A.copp x) y == A.copp (cmul x y))
   = cmul_nn (A.copp x) y; copp_copp x; cmul_pn x y;
     copp_copp (cpmul x (A.copp y))
 
+(*| Sign case of `FStar.Real.Dedekind.Mul.cmul_copp_l` where `x` is not nonnegative and `y` is nonnegative. *)
 let cmul_copp_l3 (x y:B.cut)
   : Lemma (requires ~(nonneg x) /\ nonneg y)
           (ensures  cmul (A.copp x) y == A.copp (cmul x y))
   = nonneg_or x; cmul_pp (A.copp x) y; cmul_np x y;
     copp_copp (cpmul (A.copp x) y)
 
+(*| Sign case of `FStar.Real.Dedekind.Mul.cmul_copp_l` where neither `x` nor `y` is nonnegative. *)
 let cmul_copp_l4 (x y:B.cut)
   : Lemma (requires ~(nonneg x) /\ ~(nonneg y))
           (ensures  cmul (A.copp x) y == A.copp (cmul x y))
   = nonneg_or x; cmul_pn (A.copp x) y; cmul_nn x y
 
+(*| Negation on the left factor comes out of a product: `cmul (copp x) y == copp (cmul x y)`. *)
 let cmul_copp_l (x y:B.cut)
   : Lemma (cmul (A.copp x) y == A.copp (cmul x y))
   = introduce (nonneg x /\ nonneg (A.copp x)) ==>
@@ -783,16 +901,19 @@ let cmul_copp_l (x y:B.cut)
               cmul (A.copp x) y == A.copp (cmul x y)
     with cmul_copp_l4 x y
 
+(*| Negation on the right factor comes out of a product: `cmul x (copp y) == copp (cmul x y)`. *)
 let cmul_copp_r (x y:B.cut)
   : Lemma (cmul x (A.copp y) == A.copp (cmul x y))
   = cmul_comm x (A.copp y); cmul_copp_l y x; cmul_comm y x
 
+(*| Multiplying by zero on the right gives zero: `cmul x czero == czero`. *)
 let cmul_zero (x:B.cut) : Lemma (cmul x A.czero == A.czero)
   = nonneg_or x;
     copp_czero ();
     cpmul_zero x;
     cpmul_zero (A.copp x)
 
+(*| The unit cut is a right identity for multiplication of cuts: `cmul x cone == x`. *)
 let cmul_one (x:B.cut) : Lemma (cmul x cone == x)
   = nonneg_cone ();
     nonneg_or x;
@@ -804,6 +925,7 @@ let cmul_one (x:B.cut) : Lemma (cmul x cone == x)
 
 (**** Associativity, all signs *)
 
+(*| Associativity of `cmul` when all three arguments are nonnegative, reduced to `FStar.Real.Dedekind.Mul.cpmul_assoc`. *)
 let cmul_assoc_ppp (x y z:B.cut)
   : Lemma (requires nonneg x /\ nonneg y /\ nonneg z)
           (ensures  cmul (cmul x y) z == cmul x (cmul y z))
@@ -815,6 +937,7 @@ let cmul_assoc_ppp (x y z:B.cut)
 /// Reduction steps: it is enough to prove associativity when each argument in
 /// turn has been replaced by its negation.
 
+(*| Reduction step for associativity of `cmul`: associativity for `x`, `y`, `copp z` implies it for `x`, `y`, `z`. *)
 let cmul_assoc_z (x y z:B.cut)
   : Lemma (requires cmul (cmul x y) (A.copp z) == cmul x (cmul y (A.copp z)))
           (ensures  cmul (cmul x y) z == cmul x (cmul y z))
@@ -823,6 +946,7 @@ let cmul_assoc_z (x y z:B.cut)
     cmul_copp_r x (cmul y z);
     copp_inj (cmul (cmul x y) z) (cmul x (cmul y z))
 
+(*| Reduction step for associativity of `cmul`: associativity for `x`, `copp y`, `z` implies it for `x`, `y`, `z`. *)
 let cmul_assoc_y (x y z:B.cut)
   : Lemma (requires cmul (cmul x (A.copp y)) z == cmul x (cmul (A.copp y) z))
           (ensures  cmul (cmul x y) z == cmul x (cmul y z))
@@ -832,6 +956,7 @@ let cmul_assoc_y (x y z:B.cut)
     cmul_copp_r x (cmul y z);
     copp_inj (cmul (cmul x y) z) (cmul x (cmul y z))
 
+(*| Reduction step for associativity of `cmul`: associativity for `copp x`, `y`, `z` implies it for `x`, `y`, `z`. *)
 let cmul_assoc_x (x y z:B.cut)
   : Lemma (requires cmul (cmul (A.copp x) y) z == cmul (A.copp x) (cmul y z))
           (ensures  cmul (cmul x y) z == cmul x (cmul y z))
@@ -840,6 +965,7 @@ let cmul_assoc_x (x y z:B.cut)
     cmul_copp_l x (cmul y z);
     copp_inj (cmul (cmul x y) z) (cmul x (cmul y z))
 
+(*| Associativity of `cmul` when `x` and `y` are nonnegative, for any `z`. *)
 let cmul_assoc_pp (x y z:B.cut)
   : Lemma (requires nonneg x /\ nonneg y)
           (ensures  cmul (cmul x y) z == cmul x (cmul y z))
@@ -849,6 +975,7 @@ let cmul_assoc_pp (x y z:B.cut)
     introduce nonneg (A.copp z) ==> cmul (cmul x y) z == cmul x (cmul y z)
     with (cmul_assoc_ppp x y (A.copp z); cmul_assoc_z x y z)
 
+(*| Associativity of `cmul` when `x` is nonnegative, for any `y` and `z`. *)
 let cmul_assoc_p (x y z:B.cut)
   : Lemma (requires nonneg x)
           (ensures  cmul (cmul x y) z == cmul x (cmul y z))
@@ -858,6 +985,9 @@ let cmul_assoc_p (x y z:B.cut)
     introduce nonneg (A.copp y) ==> cmul (cmul x y) z == cmul x (cmul y z)
     with (cmul_assoc_pp x (A.copp y) z; cmul_assoc_y x y z)
 
+(*| Multiplication of cuts is associative: `cmul (cmul x y) z == cmul x (cmul y z)`.
+
+    Proved by reducing each negative argument to its negation (`FStar.Real.Dedekind.Mul.cmul_assoc_x` and friends) until all are nonnegative. *)
 let cmul_assoc (x y z:B.cut)
   : Lemma (cmul (cmul x y) z == cmul x (cmul y z))
   = nonneg_or x;
@@ -868,6 +998,7 @@ let cmul_assoc (x y z:B.cut)
 
 (**** Distributivity, all signs *)
 
+(*| Distributivity of `cmul` over `cadd` when `x`, `y` and `z` are all nonnegative, from `FStar.Real.Dedekind.Mul.cpmul_distrib`. *)
 let cdistrib_ppp (x y z:B.cut)
   : Lemma (requires nonneg x /\ nonneg y /\ nonneg z)
           (ensures  cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z))
@@ -875,15 +1006,18 @@ let cdistrib_ppp (x y z:B.cut)
     cmul_pp x y; cmul_pp x z; cmul_pp x (A.cadd y z);
     cpmul_distrib x y z
 
+(*| Solving an additive equation of cuts: if `p == w + (-q)` then `p + q == w`, for `cadd` and `copp`. *)
 let group_solve1 (p q w:B.cut)
   : Lemma (requires p == A.cadd w (A.copp q)) (ensures A.cadd p q == w)
   = A.cadd_assoc w (A.copp q) q; cadd_opp_l q; A.cadd_zero w
 
+(*| Solving an additive equation of cuts: if `-q == p + (-w)` then `p + q == w`, for `cadd` and `copp`. *)
 let group_solve2 (p q w:B.cut)
   : Lemma (requires A.copp q == A.cadd p (A.copp w)) (ensures A.cadd p q == w)
   = copp_copp q; copp_cadd p (A.copp w); copp_copp w;
     A.cadd_assoc p (A.copp p) w; A.cadd_opp p; cadd_zero_l w
 
+(*| Distributivity case of `cmul` over `cadd` with `x` and `y` nonnegative, `z` not nonnegative and `cadd y z` nonnegative. *)
 let cdistrib_b1 (x y z:B.cut)
   : Lemma (requires nonneg x /\ nonneg y /\ ~(nonneg z) /\ nonneg (A.cadd y z))
           (ensures  cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z))
@@ -893,6 +1027,7 @@ let cdistrib_b1 (x y z:B.cut)
     cmul_copp_r x z;
     group_solve1 (cmul x y) (cmul x z) (cmul x (A.cadd y z))
 
+(*| Distributivity case of `cmul` over `cadd` with `x` and `y` nonnegative, and neither `z` nor `cadd y z` nonnegative. *)
 let cdistrib_b2 (x y z:B.cut)
   : Lemma (requires nonneg x /\ nonneg y /\ ~(nonneg z) /\
                     ~(nonneg (A.cadd y z)))
@@ -906,6 +1041,7 @@ let cdistrib_b2 (x y z:B.cut)
     cmul_copp_r x (A.cadd y z);
     group_solve2 (cmul x y) (cmul x z) (cmul x (A.cadd y z))
 
+(*| Distributivity of `cmul` over `cadd` when `x` and `y` are nonnegative, for any `z`. *)
 let cdistrib_pp (x y z:B.cut)
   : Lemma (requires nonneg x /\ nonneg y)
           (ensures  cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z))
@@ -920,6 +1056,7 @@ let cdistrib_pp (x y z:B.cut)
               cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z)
     with cdistrib_b2 x y z
 
+(*| Distributivity case of `cmul` over `cadd` with `x` and `z` nonnegative and `y` not nonnegative. *)
 let cdistrib_np (x y z:B.cut)
   : Lemma (requires nonneg x /\ ~(nonneg y) /\ nonneg z)
           (ensures  cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z))
@@ -927,6 +1064,7 @@ let cdistrib_np (x y z:B.cut)
     A.cadd_comm y z;
     A.cadd_comm (cmul x z) (cmul x y)
 
+(*| Distributivity case of `cmul` over `cadd` with `x` nonnegative and neither `y` nor `z` nonnegative. *)
 let cdistrib_nn (x y z:B.cut)
   : Lemma (requires nonneg x /\ ~(nonneg y) /\ ~(nonneg z))
           (ensures  cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z))
@@ -939,6 +1077,7 @@ let cdistrib_nn (x y z:B.cut)
     cmul_copp_r x (A.copp z);
     copp_cadd (cmul x (A.copp y)) (cmul x (A.copp z))
 
+(*| Distributivity of `cmul` over `cadd` when `x` is nonnegative, for any `y` and `z`. *)
 let cdistrib_p (x y z:B.cut)
   : Lemma (requires nonneg x)
           (ensures  cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z))
@@ -953,6 +1092,7 @@ let cdistrib_p (x y z:B.cut)
               cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z)
     with cdistrib_nn x y z
 
+(*| Reduction step for distributivity: distributivity for `copp x` implies it for `x`. *)
 let cdistrib_x (x y z:B.cut)
   : Lemma (requires cmul (A.copp x) (A.cadd y z) ==
                     A.cadd (cmul (A.copp x) y) (cmul (A.copp x) z))
@@ -962,6 +1102,7 @@ let cdistrib_x (x y z:B.cut)
     copp_cadd (cmul x y) (cmul x z);
     copp_inj (cmul x (A.cadd y z)) (A.cadd (cmul x y) (cmul x z))
 
+(*| Multiplication of cuts distributes over addition: `cmul x (cadd y z) == cadd (cmul x y) (cmul x z)`. *)
 let cmul_distrib (x y z:B.cut)
   : Lemma (cmul x (A.cadd y z) == A.cadd (cmul x y) (cmul x z))
   = nonneg_or x;
@@ -975,14 +1116,16 @@ let cmul_distrib (x y z:B.cut)
 
 (**** Compatibility with the order *)
 
+(*| A cut is strictly positive iff its negation is strictly negative: `clt czero u` iff `clt (copp u) czero`. *)
 let cpos_copp (u:B.cut)
   : Lemma (B.clt A.czero u <==> B.clt (A.copp u) A.czero)
   = clt_copp A.czero u; copp_czero ()
 
+(*| A strictly positive cut is nonnegative. *)
 let cpos_nonneg (u:B.cut)
   : Lemma (requires B.clt A.czero u) (ensures nonneg u) = ()
 
-/// A cut strictly above zero contains a strictly positive rational.
+(*| A strictly positive rational member of a cut `u` that is strictly above `czero` (ghost). *)
 let cpos_witness (u:B.cut)
   : Ghost Q.rat (requires B.clt A.czero u)
                 (ensures fun a -> u a /\ Q.lt Q.zero a)
@@ -994,6 +1137,7 @@ let cpos_witness (u:B.cut)
     with Q.lt_trans Q.zero a a2;
     a2
 
+(*| The product of two strictly positive cuts is strictly positive. *)
 let cmul_pos (u z:B.cut)
   : Lemma (requires B.clt A.czero u /\ B.clt A.czero z)
           (ensures  B.clt A.czero (cmul u z))
@@ -1010,10 +1154,12 @@ let cmul_pos (u z:B.cut)
     with a b and ();
     B.clt_of_witness A.czero (cmul u z) Q.zero
 
+(*| A cut is strictly negative iff its negation is strictly positive: `clt u czero` iff `clt czero (copp u)`. *)
 let cneg_copp (u:B.cut)
   : Lemma (B.clt u A.czero <==> B.clt A.czero (A.copp u))
   = cpos_copp (A.copp u); copp_copp u
 
+(*| A strictly negative cut times a strictly positive cut is strictly negative. *)
 let cmul_neg (u z:B.cut)
   : Lemma (requires B.clt A.czero z /\ B.clt u A.czero)
           (ensures  B.clt (cmul u z) A.czero)
@@ -1022,6 +1168,7 @@ let cmul_neg (u z:B.cut)
     cmul_copp_l u z;
     cneg_copp (cmul u z)
 
+(*| Sign of a factor from the sign of a product: if `z` and `cmul u z` are strictly positive then `u` is strictly positive. *)
 let cmul_pos_rev (u z:B.cut)
   : Lemma (requires B.clt A.czero z /\ B.clt A.czero (cmul u z))
           (ensures  B.clt A.czero u)
@@ -1035,7 +1182,7 @@ let cmul_pos_rev (u z:B.cut)
       B.clt_trans A.czero (cmul u z) A.czero
     end
 
-/// [x < y] iff [0 < y - x].
+(*| Strict order of cuts in terms of subtraction: `clt x y` iff `y - x` (that is `cadd y (copp x)`) is strictly above `czero`. *)
 let clt_sub (x y:B.cut)
   : Lemma (B.clt x y <==> B.clt A.czero (A.cadd y (A.copp x)))
   = A.cadd_mono_rev A.czero (A.cadd y (A.copp x)) x;
@@ -1044,6 +1191,7 @@ let clt_sub (x y:B.cut)
     cadd_opp_l x;
     A.cadd_zero y
 
+(*| Multiplication distributes over subtraction on the left: `cmul (y - x) z == (cmul y z) - (cmul x z)`, where subtraction is `cadd` with `copp`. *)
 let cmul_sub (x y z:B.cut)
   : Lemma (cmul (A.cadd y (A.copp x)) z ==
            A.cadd (cmul y z) (A.copp (cmul x z)))
@@ -1053,6 +1201,7 @@ let cmul_sub (x y z:B.cut)
     cmul_comm z (A.copp x);
     cmul_copp_l x z
 
+(*| Multiplying by a strictly positive cut preserves and reflects strict order: when `clt czero z`, `clt (cmul x z) (cmul y z)` iff `clt x y`. *)
 let cmul_mono (x y z:B.cut)
   : Lemma (requires B.clt A.czero z)
           (ensures  B.clt (cmul x z) (cmul y z) <==> B.clt x y)
@@ -1068,6 +1217,9 @@ let cmul_mono (x y z:B.cut)
 
 (**** The embedding of the rationals is multiplicative *)
 
+(*| One inclusion of multiplicativity of the embedding for positive `p` and `q`: `cpmul (rat_cut p) (rat_cut q)` is below `rat_cut (p * q)`.
+
+    Used by `FStar.Real.Dedekind.Mul.rat_mul_pp`. *)
 let rat_mul_pp1 (p q:Q.rat)
   : Lemma (requires Q.lt Q.zero p /\ Q.lt Q.zero q)
           (ensures  B.cle (cpmul (B.rat_cut p) (B.rat_cut q))
@@ -1094,8 +1246,9 @@ let rat_mul_pp1 (p q:Q.rat)
       end
     end
 
-/// Given [0 <= t < p*q] with [p,q > 0], split [t] as a product of a member of
-/// [rat_cut p] and a member of [rat_cut q].
+(*| For positive rationals `p` and `q` and `0 <= t < p * q`, `t` is in `cpmul (rat_cut p) (rat_cut q)`.
+
+    The proof splits `t` as below a product of a member of `rat_cut p` and a member of `rat_cut q`. Used by `FStar.Real.Dedekind.Mul.rat_mul_pp2`. *)
 let rat_mul_split (p q t:Q.rat)
   : Lemma (requires Q.lt Q.zero p /\ Q.lt Q.zero q /\
                     Q.le Q.zero t /\ Q.lt t (Q.mul p q))
@@ -1118,6 +1271,9 @@ let rat_mul_split (p q t:Q.rat)
     B.rat_cut_mem q b;
     mem1 (B.rat_cut p) (B.rat_cut q) a b t
 
+(*| The other inclusion of multiplicativity of the embedding for positive `p` and `q`: `rat_cut (p * q)` is below `cpmul (rat_cut p) (rat_cut q)`.
+
+    Used by `FStar.Real.Dedekind.Mul.rat_mul_pp`. *)
 let rat_mul_pp2 (p q:Q.rat)
   : Lemma (requires Q.lt Q.zero p /\ Q.lt Q.zero q)
           (ensures  B.cle (B.rat_cut (Q.mul p q))
@@ -1132,6 +1288,7 @@ let rat_mul_pp2 (p q:Q.rat)
       with rat_mul_split p q t
     end
 
+(*| The embedding of the rationals is multiplicative on positive rationals: `rat_cut (p * q) == cmul (rat_cut p) (rat_cut q)` when `0 < p` and `0 < q`. *)
 let rat_mul_pp (p q:Q.rat)
   : Lemma (requires Q.lt Q.zero p /\ Q.lt Q.zero q)
           (ensures  B.rat_cut (Q.mul p q) == cmul (B.rat_cut p) (B.rat_cut q))
@@ -1140,13 +1297,16 @@ let rat_mul_pp (p q:Q.rat)
     rat_mul_pp1 p q; rat_mul_pp2 p q;
     B.cle_antisym (B.rat_cut (Q.mul p q)) (cpmul (B.rat_cut p) (B.rat_cut q))
 
+(*| Negation on the right factor comes out of a rational product: `p * (-q) == -(p * q)`. *)
 let qmul_neg_r (p q:Q.rat) : Lemma (Q.mul p (Q.neg q) == Q.neg (Q.mul p q))
   = Q.mul_comm p (Q.neg q); Q.mul_neg q p; Q.mul_comm q p
 
+(*| A rational is negative iff its negation is positive: `p < 0` iff `0 < -p`. *)
 let qneg_pos (p:Q.rat)
   : Lemma (Q.lt p Q.zero <==> Q.lt Q.zero (Q.neg p))
   = A.qneg_lt_zero p
 
+(*| Multiplicativity of the embedding when `p` is negative and `q` positive: `rat_cut (p * q) == cmul (rat_cut p) (rat_cut q)`. *)
 let rat_mul_np (p q:Q.rat)
   : Lemma (requires Q.lt p Q.zero /\ Q.lt Q.zero q)
           (ensures  B.rat_cut (Q.mul p q) == cmul (B.rat_cut p) (B.rat_cut q))
@@ -1158,6 +1318,7 @@ let rat_mul_np (p q:Q.rat)
     A.rat_opp (Q.mul p q);
     copp_inj (B.rat_cut (Q.mul p q)) (cmul (B.rat_cut p) (B.rat_cut q))
 
+(*| Multiplicativity of the embedding when `p` is positive and `q` negative: `rat_cut (p * q) == cmul (rat_cut p) (rat_cut q)`. *)
 let rat_mul_pn (p q:Q.rat)
   : Lemma (requires Q.lt Q.zero p /\ Q.lt q Q.zero)
           (ensures  B.rat_cut (Q.mul p q) == cmul (B.rat_cut p) (B.rat_cut q))
@@ -1165,6 +1326,7 @@ let rat_mul_pn (p q:Q.rat)
     Q.mul_comm q p;
     cmul_comm (B.rat_cut q) (B.rat_cut p)
 
+(*| Multiplicativity of the embedding when `p` and `q` are both negative: `rat_cut (p * q) == cmul (rat_cut p) (rat_cut q)`. *)
 let rat_mul_nn (p q:Q.rat)
   : Lemma (requires Q.lt p Q.zero /\ Q.lt q Q.zero)
           (ensures  B.rat_cut (Q.mul p q) == cmul (B.rat_cut p) (B.rat_cut q))
@@ -1178,11 +1340,15 @@ let rat_mul_nn (p q:Q.rat)
     qmul_neg_r p q;
     Q.neg_neg (Q.mul p q)
 
+(*| Multiplicativity of the embedding when the left factor is zero: `rat_cut (0 * q) == cmul (rat_cut 0) (rat_cut q)`. *)
 let rat_mul_z (q:Q.rat)
   : Lemma (B.rat_cut (Q.mul Q.zero q) == cmul (B.rat_cut Q.zero) (B.rat_cut q))
   = Q.mul_comm Q.zero q; Q.mul_zero q;
     cmul_czero_l (B.rat_cut q)
 
+(*| The embedding of the rationals into cuts is multiplicative: `rat_cut (p * q) == cmul (rat_cut p) (rat_cut q)` for all rationals.
+
+    Here `rat_cut` is `FStar.Real.Dedekind.Base.rat_cut` and the product on the left is `FStar.Rational.mul`. *)
 let rat_mul (p q:Q.rat)
   : Lemma (B.rat_cut (Q.mul p q) == cmul (B.rat_cut p) (B.rat_cut q))
   = Q.lt_total p Q.zero;
@@ -1206,14 +1372,17 @@ let rat_mul (p q:Q.rat)
 
 (**** Multiplicative approximation *)
 
+(*| Transitivity of the non-strict rational order: `p <= q` and `q <= r` imply `p <= r`. *)
 let qle_trans (p q r:Q.rat)
   : Lemma (requires Q.le p q /\ Q.le q r) (ensures Q.le p r)
   = introduce (Q.lt p q /\ Q.lt q r) ==> Q.lt p r with Q.lt_trans p q r
 
+(*| Adding the same rational on the right preserves `<=`: `u <= v` implies `u + c <= v + c`. *)
 let qadd_le_r (u v c:Q.rat)
   : Lemma (requires Q.le u v) (ensures Q.le (Q.add u c) (Q.add v c))
   = Q.lt_add_r u v c
 
+(*| Multiplying by a nonnegative rational preserves `<=`: `u <= v` and `0 <= c` imply `u * c <= v * c`. *)
 let qmul_le_nonneg (u v c:Q.rat)
   : Lemma (requires Q.le u v /\ Q.le Q.zero c)
           (ensures  Q.le (Q.mul u c) (Q.mul v c))
@@ -1222,7 +1391,7 @@ let qmul_le_nonneg (u v c:Q.rat)
     introduce Q.zero == c ==> Q.le (Q.mul u c) (Q.mul v c)
     with (Q.mul_zero u; Q.mul_zero v)
 
-/// [(1-s)(1+s) == 1 - s^2].
+(*| Difference-of-squares identity on rationals: `(1 - s) * (1 + s) == 1 - s * s`. *)
 let qsq_ident (s:Q.rat)
   : Lemma (Q.mul (Q.sub Q.one s) (Q.add Q.one s) == Q.sub Q.one (Q.mul s s))
   = let t = Q.sub Q.one s in
@@ -1238,6 +1407,7 @@ let qsq_ident (s:Q.rat)
     Q.add_neg s;
     Q.add_zero Q.one
 
+(*| For a positive rational `s`, `1 - s * s < 1`. *)
 let qsq_lt_one (s:Q.rat)
   : Lemma (requires Q.lt Q.zero s)
           (ensures  Q.lt (Q.sub Q.one (Q.mul s s)) Q.one)
@@ -1246,7 +1416,9 @@ let qsq_lt_one (s:Q.rat)
     qlt_add_neg (Q.neg (Q.mul s s)) Q.one;
     Q.add_comm (Q.neg (Q.mul s s)) Q.one
 
-/// The arithmetic core of the multiplicative approximation lemma.
+(*| The arithmetic core of the multiplicative approximation lemma: if `0 <= t < 1`, `0 < a`, `r <= a + eps` and `eps <= (1 - t) * a`, then `t * r < a`.
+
+    Used by `FStar.Real.Dedekind.Mul.mapprox`. *)
 let mapprox_arith (t a eps r:Q.rat)
   : Lemma (requires Q.le Q.zero t /\ Q.lt t Q.one /\ Q.lt Q.zero a /\
                     Q.le r (Q.add a eps) /\
@@ -1280,7 +1452,9 @@ let mapprox_arith (t a eps r:Q.rat)
     Q.mul_one a;
     qle_lt_trans (Q.mul t r) (Q.mul a (Q.sub Q.one (Q.mul s s))) a
 
-/// The larger of two members of a cut, one of which is known positive.
+(*| The larger of two members `a1` and `a0` of a cut, where only `a0` is known positive; the result is a positive member (ghost).
+
+    See `FStar.Real.Dedekind.Mul.qmax_in` for the case where both are positive. *)
 let qmax_in' (c:B.cut) (a1 a0:Q.rat)
   : Ghost Q.rat
       (requires c a1 /\ c a0 /\ Q.lt Q.zero a0)
@@ -1289,10 +1463,9 @@ let qmax_in' (c:B.cut) (a1 a0:Q.rat)
     introduce Q.lt a0 a1 ==> Q.lt Q.zero a1 with Q.lt_trans Q.zero a0 a1;
     if Q.lt a1 a0 then a0 else a1
 
-/// **Multiplicative approximation lemma.** For a cut [c] strictly above zero
-/// and a rational [0 <= t < 1], there are a positive member [a] of [c] and a
-/// positive non-member [r] with [t*r < a].  Equivalently, the ratio [a/r] can
-/// be pushed arbitrarily close to 1 from below.
+(*| Multiplicative approximation lemma: for a cut `c` strictly above `czero` and a rational `0 <= t < 1`, returns a positive member `a` and a positive non-member `r` of `c` with `t * r < a` (ghost).
+
+    Equivalently, the ratio `a / r` can be pushed arbitrarily close to `1` from below. It is the multiplicative counterpart of `FStar.Real.Dedekind.Base.approx` and the key step of `FStar.Real.Dedekind.Mul.cinv_le2`. *)
 let mapprox (c:B.cut) (t:Q.rat)
   : Ghost (Q.rat & Q.rat)
       (requires B.clt A.czero c /\ Q.le Q.zero t /\ Q.lt t Q.one)
@@ -1315,13 +1488,16 @@ let mapprox (c:B.cut) (t:Q.rat)
 
 (**** Multiplicative inverse *)
 
+(*| A positive rational is not zero. *)
 let qpos_ne_zero (r:Q.rat) : Lemma (requires Q.lt Q.zero r) (ensures r =!= Q.zero)
   = Q.lt_irrefl Q.zero
 
+(*| A positive rational times its inverse on the left is one: `(1 / r) * r == 1`. *)
 let qmul_inv_l (r:Q.rat)
   : Lemma (requires Q.lt Q.zero r) (ensures Q.mul (Q.inv r) r == Q.one)
   = qpos_ne_zero r; Q.inv_num_den r; Q.mul_comm r (Q.inv r)
 
+(*| Inversion of positive rationals reverses strict order: if `0 < r < r'` then `1 / r' < 1 / r`. *)
 let qinv_lt (r r':Q.rat)
   : Lemma (requires Q.lt Q.zero r /\ Q.lt r r')
           (ensures  Q.lt (Q.inv r') (Q.inv r))
@@ -1340,14 +1516,22 @@ let qinv_lt (r r':Q.rat)
     Q.mul_comm Q.one (Q.inv r);
     Q.mul_one (Q.inv r)
 
-/// The reciprocal cut of a strictly positive cut.
+(*| The predicate underlying the reciprocal of a strictly positive cut: `q` is negative, or `q < 1 / r` for some positive rational `r` not in `x`.
+
+    `FStar.Real.Dedekind.Mul.cinv` packages it as a cut when `x` is strictly above `czero`. *)
 let invp (x:B.cut) (q:Q.rat) : prop =
   Q.lt q Q.zero \/
   (exists (r:Q.rat). Q.lt Q.zero r /\ ~(x r) /\ Q.lt q (Q.inv r))
 
+(*| The reciprocal predicate `invp x` is nonempty: it contains every negative rational.
+
+    First of the four cut conditions for `FStar.Real.Dedekind.Mul.cinv`. *)
 let inv_ne (x:B.cut) : Lemma (exists (q:Q.rat). invp x q)
   = introduce exists (q:Q.rat). invp x q with (Q.below Q.zero) and ()
 
+(*| For a strictly positive cut `x`, the reciprocal predicate `invp x` is not everything: `1 / a0` is not in it for a positive member `a0` of `x`.
+
+    Second of the four cut conditions for `FStar.Real.Dedekind.Mul.cinv`; this is where positivity of `x` is needed. *)
 let inv_nf (x:B.cut)
   : Lemma (requires B.clt A.czero x) (ensures exists (q:Q.rat). ~(invp x q))
   = let a0 = cpos_witness x in
@@ -1364,6 +1548,9 @@ let inv_nf (x:B.cut)
     end;
     introduce exists (q:Q.rat). ~(invp x q) with (Q.inv a0) and ()
 
+(*| The reciprocal predicate `invp x` is downward closed: if `v` is in it and `u < v` then `u` is in it.
+
+    Third of the four cut conditions for `FStar.Real.Dedekind.Mul.cinv`. *)
 let inv_dc (x:B.cut)
   : Lemma (forall (u v:Q.rat). (invp x v /\ Q.lt u v) ==> invp x u)
   = introduce forall (u v:Q.rat). (invp x v /\ Q.lt u v) ==> invp x u
@@ -1382,6 +1569,9 @@ let inv_dc (x:B.cut)
       end
     end
 
+(*| Every member `u` of `invp x` has a strictly larger member, a midpoint towards `0` or towards a witnessing reciprocal.
+
+    Pointwise form of the no-greatest-element condition, consumed by `FStar.Real.Dedekind.Mul.inv_op`. *)
 let inv_op_aux (x:B.cut) (u:Q.rat)
   : Lemma (requires invp x u)
           (ensures exists (v:Q.rat). invp x v /\ Q.lt u v)
@@ -1405,14 +1595,21 @@ let inv_op_aux (x:B.cut) (u:Q.rat)
       with (Q.mid u (Q.inv r)) and ()
     end
 
+(*| The reciprocal predicate `invp x` has no greatest element (`FStar.Real.Dedekind.Base.no_greatest`).
+
+    Last of the four cut conditions for `FStar.Real.Dedekind.Mul.cinv`. *)
 let inv_op (x:B.cut) : Lemma (B.no_greatest (invp x))
   = B.no_greatest_intro (invp x) (inv_op_aux x)
 
+(*| The reciprocal of a strictly positive cut, with membership given by `FStar.Real.Dedekind.Mul.invp`.
+
+    It is strictly positive (`FStar.Real.Dedekind.Mul.cinv_pos`) and a multiplicative inverse (`FStar.Real.Dedekind.Mul.cmul_inv`). For a reciprocal defined on all cuts see `FStar.Real.Dedekind.Mul.cinvt`. *)
 let cinv (x:B.cut{B.clt A.czero x})
   : c:B.cut{forall (q:Q.rat). c q <==> invp x q}
   = inv_ne x; inv_nf x; inv_dc x; inv_op x;
     B.mk_cut (invp x)
 
+(*| The reciprocal of a strictly positive cut is strictly positive. *)
 let cinv_pos (x:B.cut{B.clt A.czero x})
   : Lemma (B.clt A.czero (cinv x))
   = let r = B.cut_nonmem x in
@@ -1429,6 +1626,9 @@ let cinv_pos (x:B.cut{B.clt A.czero x})
     Q.lt_irrefl Q.zero;
     B.clt_of_witness A.czero (cinv x) Q.zero
 
+(*| One inclusion of the inverse law: `cpmul x (cinv x)` is below `cone`.
+
+    Used by `FStar.Real.Dedekind.Mul.cmul_inv`. *)
 let cinv_le1 (x:B.cut{B.clt A.czero x})
   : Lemma (B.cle (cpmul x (cinv x)) cone)
   = qzero_lt_one ();
@@ -1457,7 +1657,7 @@ let cinv_le1 (x:B.cut{B.clt A.czero x})
       end
     end
 
-/// From [t*r < a] with [a,r > 0] conclude [t < a/r].
+(*| Moving a positive factor across a strict rational inequality: from `t * r < a` with `a` and `r` positive, conclude `t < a * (1 / r)`. *)
 let cinv_shift (t a r:Q.rat)
   : Lemma (requires Q.lt Q.zero a /\ Q.lt Q.zero r /\ Q.lt (Q.mul t r) a)
           (ensures  Q.lt t (Q.mul a (Q.inv r)))
@@ -1468,6 +1668,9 @@ let cinv_shift (t a r:Q.rat)
     Q.inv_num_den r;
     Q.mul_one t
 
+(*| The other inclusion of the inverse law: `cone` is below `cpmul x (cinv x)`.
+
+    The proof uses the multiplicative approximation lemma `FStar.Real.Dedekind.Mul.mapprox`. Used by `FStar.Real.Dedekind.Mul.cmul_inv`. *)
 let cinv_le2 (x:B.cut{B.clt A.czero x})
   : Lemma (B.cle cone (cpmul x (cinv x)))
   = introduce forall (t:Q.rat). cone t ==> cpmul x (cinv x) t
@@ -1494,7 +1697,9 @@ let cinv_le2 (x:B.cut{B.clt A.czero x})
       end
     end
 
-/// **The reciprocal is a multiplicative inverse.**
+(*| The reciprocal is a multiplicative inverse for strictly positive cuts: `cmul x (cinv x) == cone`.
+
+    For any nonzero cut see `FStar.Real.Dedekind.Mul.cmul_invt`. *)
 let cmul_inv (x:B.cut)
   : Lemma (requires B.clt A.czero x)
           (ensures  cmul x (cinv x) == cone)
@@ -1505,33 +1710,43 @@ let cmul_inv (x:B.cut)
 
 #push-options "--z3rlimit 100"
 
+(*| The reciprocal extended by zero (ghost): `cinv x` when `x` is strictly positive, `czero` otherwise.
+
+    An auxiliary step towards `FStar.Real.Dedekind.Mul.cinvt`. *)
 let cinv0 (x:B.cut) : GTot B.cut =
   if ID.strong_excluded_middle (B.clt A.czero x) then cinv x else A.czero
 
+(*| Unfolds `cinv0` on a strictly positive cut: `cinv0 x == cinv x`. *)
 let cinv0_pos (x:B.cut)
   : Lemma (requires B.clt A.czero x) (ensures cinv0 x == cinv x)
   = ()
 
-/// The total reciprocal: [cinvt czero == czero].
+(*| The total reciprocal of a cut (ghost): `cinv x` when `x` is strictly positive, `copp (cinv0 (copp x))` otherwise.
+
+    It maps `czero` to `czero` (`FStar.Real.Dedekind.Mul.cinvt_zero`) and is a multiplicative inverse for every nonzero cut (`FStar.Real.Dedekind.Mul.cmul_invt`). It is defined by classical case analysis (`FStar.IndefiniteDescription.strong_excluded_middle`), hence ghost. *)
 let cinvt (x:B.cut) : GTot B.cut =
   if ID.strong_excluded_middle (B.clt A.czero x)
   then cinv x
   else A.copp (cinv0 (A.copp x))
 
+(*| Unfolds `cinvt` on a strictly positive cut: `cinvt x == cinv x`. *)
 let cinvt_pos (x:B.cut)
   : Lemma (requires B.clt A.czero x) (ensures cinvt x == cinv x)
   = ()
 
+(*| A strictly negative cut is not strictly positive. *)
 let cnotpos (x:B.cut)
   : Lemma (requires B.clt x A.czero) (ensures ~(B.clt A.czero x))
   = introduce B.clt A.czero x ==> False
     with (B.clt_trans A.czero x A.czero; B.clt_irrefl A.czero)
 
+(*| Unfolds `cinvt` on a strictly negative cut: `cinvt x == copp (cinv0 (copp x))`, that is minus the reciprocal of `copp x`. *)
 let cinvt_neg (x:B.cut)
   : Lemma (requires B.clt x A.czero)
           (ensures  cinvt x == A.copp (cinv0 (A.copp x)))
   = cnotpos x
 
+(*| The total reciprocal is a multiplicative inverse for strictly negative cuts: `cmul x (cinvt x) == cone`. *)
 let cmul_inv_neg (x:B.cut)
   : Lemma (requires B.clt x A.czero)
           (ensures  cmul x (cinvt x) == cone)
@@ -1545,6 +1760,7 @@ let cmul_inv_neg (x:B.cut)
     copp_copp cone;
     cmul_copp_r x u
 
+(*| The total reciprocal is a multiplicative inverse for every nonzero cut: `cmul x (cinvt x) == cone` when `x` is not `czero`. *)
 let cmul_invt (x:B.cut)
   : Lemma (requires x =!= A.czero) (ensures cmul x (cinvt x) == cone)
   = B.clt_total A.czero x;
@@ -1553,6 +1769,7 @@ let cmul_invt (x:B.cut)
     introduce B.clt x A.czero ==> cmul x (cinvt x) == cone
     with cmul_inv_neg x
 
+(*| The total reciprocal of zero is zero: `cinvt czero == czero`. *)
 let cinvt_zero () : Lemma (cinvt A.czero == A.czero)
   = B.clt_irrefl A.czero;
     copp_czero ()

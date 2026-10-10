@@ -30,34 +30,40 @@ module FStar.Sealed
    use with inhabited types, in a style that is more efficient for
    SMT-based reasoning
 *)
+(*| A value of type `a` hidden from the logic.
+
+    Within the logic, `sealed a` is a singleton: any two values of this type
+    are provably equal (see `FStar.Sealed.sealed_singl`). The hidden value can
+    only be observed with `FStar.Sealed.unseal`, which has the
+    nondeterministic `Nd` effect, for instance in metaprograms.
+
+    See `FStar.Sealed.Inhabited` for a variant better suited to SMT reasoning
+    about inhabited types. *)
 assume
 new type sealed ([@@@strictly_positive] a : Type u#aa) : Type u#0
 
-(* The main axiom provided by this module:
+(*| Any two sealed values of the same type are equal.
 
-   Two sealed values of the same type are equal.
-
-   Their seal can be broken only by incurring a nondeterministic effect.
-   See [unseal] below.
-*)
+    This is the main axiom of the module. It is sound because the hidden value
+    can only be observed through the nondeterministic `FStar.Sealed.unseal`. *)
 val sealed_singl (#a:Type) (x y : sealed a)
   : Lemma (x == y)
 
-(* Sealing a value hides it from the logical fragment of F* *)
+(*| Hides a value, making it invisible to the logic. *)
 val seal (#a : Type u#aa) (x:a) : Tot (sealed a)
 
-(* Observe a sealed value.
+(*| Observes the value hidden in a sealed value.
 
-   This is the elimination form for [sealed]. It is not a function: it
-   has the [Nd] effect, so nothing is known about its result and, in
-   particular, [sealed_singl] above cannot be used to derive that any
-   two values of type [a] are equal. Note that [Nd] is a total effect,
-   so unsealing is allowed in (terminating) programs, and, since [Nd] is
-   a subeffect of [Tac], in metaprograms too. *)
+    The elimination form for `FStar.Sealed.sealed`. It is not a function: it
+    has the `Nd` effect, so nothing is known about its result, and
+    `FStar.Sealed.sealed_singl` cannot be used to prove that two values of type
+    `a` are equal. `Nd` is a total effect and a sub-effect of `Tac`, so
+    terminating programs and metaprograms can both unseal. *)
 val unseal (#a : Type u#aa) (s : sealed a) : Nd a
 
-(* Mapping and binding a sealed value. Since the seal is broken to
-   apply [f], these too take an [Nd] function. *)
+(*| Applies a nondeterministic function to a sealed value, sealing the result. *)
 val map_seal (#a : Type u#aa) (#b : Type u#bb) (s : sealed a) (f : a -> Nd b) : Tot (sealed b)
 
+(*| Applies a nondeterministic function returning a sealed value to a sealed
+    value. *)
 val bind_seal (#a : Type u#aa) (#b : Type u#bb) (s : sealed a) (f : a -> Nd (sealed b)) : Tot (sealed b)

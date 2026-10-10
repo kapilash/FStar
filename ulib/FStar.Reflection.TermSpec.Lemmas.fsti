@@ -317,14 +317,28 @@ and ln_spec'_branches (brs:list (pattern_spec & term_spec)) (i:int)
     | [] -> true
     | br::brs -> ln_spec'_branch br i && ln_spec'_branches brs i
 
+(*| Holds when a spec term is locally closed: it has no dangling de Bruijn
+    indices and no unification variables.
+
+    Defined as `ln_spec' t (-1)`, where `ln_spec' t n` accepts bound variables
+    with index at most `n`, counting binders, and rejects `Ts_Uvar`.
+    `FStar.Reflection.Typing` uses it to state well-scopedness. *)
 let ln_spec (t:term_spec) : GTot bool = ln_spec' t (-1)
+(*| Holds when a spec computation type is locally closed, the counterpart of
+    `FStar.Reflection.TermSpec.Lemmas.ln_spec` for
+    `FStar.Reflection.TermSpec.comp_spec`. *)
 let ln_spec_comp (c:comp_spec) : GTot bool = ln_spec'_comp c (-1)
 
 (* ------------------------------------------------------------------ *)
 (* Opening a bound variable [i] to the free variable [x]. Mirror of
    [Reflection.Typing.open_with_var]. *)
 
+(*| The substitution element that opens bound index `i` to the free variable
+    `x`, that is `DTs i (Ts_Var x)`. *)
 let open_with_var_elt_spec (x:var) (i:nat) : subst_spec_elt = DTs i (Ts_Var x)
+(*| The substitution that opens bound index `i` to the free variable `x`.
+
+    The spec counterpart of `FStar.Reflection.Typing.open_with_var`. *)
 let open_with_var_spec (x:var) (i:nat) : subst_spec = [open_with_var_elt_spec x i]
 
 (* ------------------------------------------------------------------ *)
@@ -335,10 +349,17 @@ let open_with_var_spec (x:var) (i:nat) : subst_spec = [open_with_var_elt_spec x 
    [FStar.Reflection.Typing]), so keeping the bodies in the
    implementation keeps them out of every consumer's checked file. *)
 
+(*| Substituting into a spec pattern does not change the number of variables
+    the pattern binds. *)
 val binder_offset_pattern_spec_invariant (p:pattern_spec) (ss:subst_spec)
   : Lemma (ensures binder_offset_pattern_spec p ==
                    binder_offset_pattern_spec (subst_pattern_spec p ss))
 
+(*| Closing the variable `x` to index `i` and then opening index `i` with `x`
+    gives back the original spec term.
+
+    Requires that `t` has no bound variable with index `i` or more, that is
+    `ln_spec' t (i - 1)`. *)
 val open_close_inverse'_spec (i:nat) (t:term_spec { ln_spec' t (i - 1) }) (x:var)
   : Lemma
       (ensures subst_term_spec
@@ -346,6 +367,8 @@ val open_close_inverse'_spec (i:nat) (t:term_spec { ln_spec' t (i - 1) }) (x:var
                  (open_with_var_spec x i)
                == t)
 
+(*| Opening index `i` with a variable `x` that is not free in `t`, and then
+    closing `x` to index `i`, gives back the original spec term. *)
 val close_open_inverse'_spec (i:nat)
                              (t:term_spec)
                              (x:var { ~(x `Set.mem` freevars_spec t) })
@@ -355,11 +378,15 @@ val close_open_inverse'_spec (i:nat)
                  [ NDs x i ]
                == t)
 
+(*| Closing a variable that is not free in a spec term leaves the term
+    unchanged. *)
 val close_with_not_free_var_spec (t:term_spec) (x:var) (i:nat)
   : Lemma
       (requires ~ (Set.mem x (freevars_spec t)))
       (ensures subst_term_spec t [ NDs x i ] == t)
 
+(*| Substituting for a de Bruijn index `j` leaves a spec term unchanged when the
+    term only has bound variables with index at most `i`, for `i < j`. *)
 val open_with_gt_ln_spec (e:term_spec) (i:nat) (t:term_spec) (j:nat)
   : Lemma (requires ln_spec' e i /\ i < j)
           (ensures subst_term_spec e [ DTs j t ] == e)

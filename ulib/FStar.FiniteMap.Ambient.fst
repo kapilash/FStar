@@ -39,6 +39,26 @@ module FStar.FiniteMap.Ambient
 
 open FStar.FiniteMap.Base
 
+(*| Brings `FStar.FiniteMap.Base.all_finite_map_facts` into the SMT context
+    whenever a finite-map type is mentioned, in modules that depend on
+    `FStar.FiniteMap.Ambient`.
+
+    Triggered automatically on `FStar.FiniteMap.Base.map a b`, so the facts
+    are available in any proof that involves a finite map; nothing needs to
+    be called. Unlike `FStar.FiniteSet.Ambient`, it is a lemma with an SMT
+    pattern rather than a top-level `squash`: the facts are
+    universe-polymorphic in the value type, and the pattern instantiates
+    them at the universe of each map type that occurs.
+
+    ```fstar
+    open FStar.FiniteMap.Ambient
+    let insert_grows_domain (m: FStar.FiniteMap.Base.map int string)
+      : Lemma (FStar.FiniteMap.Base.mem 1 (FStar.FiniteMap.Base.insert 1 "one" m))
+      = ()
+    ```
+
+    To use the facts only in a few proofs, call
+    `FStar.FiniteMap.Base.all_finite_map_facts_lemma` instead. *)
 let all_finite_map_facts_ambient (a:eqtype) (b:Type u#b)
 : Lemma
   (ensures all_finite_map_facts u#b)

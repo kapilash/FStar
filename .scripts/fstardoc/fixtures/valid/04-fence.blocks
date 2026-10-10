@@ -1,0 +1,5 @@
+paragraph
+  text "Proves a universal property one point at a time."
+code_block "fstar"
+  line "let all_nat (f:int -> nat) : Lemma (forall x. f x >= 0) ="
+  line "  FStar.Classical.forall_intro (fun x -> ())"

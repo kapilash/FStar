@@ -1,0 +1,1 @@
+Returns the first element of a nonempty list.

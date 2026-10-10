@@ -18,10 +18,22 @@ module FStar.Tactics.Easy
 open FStar.Tactics.Effect
 open FStar.Tactics.Logic.Lemmas {} (* needed to bring in lemma_from_squash into tc scope for clients *)
 
+(*| Solves the current goal by introducing all binders with `FStar.Stubs.Tactics.V2.Builtins.intro` and handing the rest to SMT.
+
+    Used as the tactic that fills the implicit argument of
+    `FStar.Tactics.Easy.easy`. *)
 [@@plugin]
 val easy_fill () : Tac unit
 
 (* Call this function to solve any "easy" goals, where we just
 have to introduce a bunch of binders and call SMT. *)
 
+(*| Proves an "easy" goal of the expected type: one that only needs its binders introduced and then SMT.
+
+    The implicit argument is synthesized by `FStar.Tactics.Easy.easy_fill`,
+    so `easy` can be used directly as the definition of a lemma.
+
+    ```fstar
+    let easy_example : x:nat -> Lemma (x + 0 == x) = FStar.Tactics.Easy.easy
+    ``` *)
 let easy (#a:Type) (#[easy_fill ()] x : a) : a = x

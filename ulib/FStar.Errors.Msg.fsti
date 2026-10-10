@@ -19,33 +19,31 @@ module FStar.Errors.Msg
 
 open FStar.Pprint
 
-(* An error message is a list of documents. This allows us to print errors like
-these:
+(*| A structured error message: a list of `FStar.Pprint.document`s rendered in order, one item per entry.
 
-* Error 19 at tests/error-messages/Bug1997.fst(92,19-92,49):
-  - Assertion failed
-  - The SMT solver could not prove the query. Use --query_stats for more details.
-  - Also see: Prims.fst(96,32-96,42)
+    The header (error number and source range) is added by the error reporter.
+    For example, a message with three documents is printed as:
 
-The header is taken from the code and range, and then the documents are rendered
-in order.
+    ```text
+    * Error 19 at tests/error-messages/Bug1997.fst(92,19-92,49):
+      - Assertion failed
+      - The SMT solver could not prove the query. Use --query_stats for more details.
+      - Also see: Prims.fst(96,32-96,42)
+    ```
 
-`empty` documents in the list are skipped.
-*)
+    Empty documents (`FStar.Pprint.empty`) in the list are skipped. *)
 type error_message = list document
 
-(* A helper for creating errors from strings, only to be used for text.
-This will split the string into words and format is a paragraph.
+(*| Turns a string of prose into a document, splitting it into words and formatting them as a paragraph.
 
-If you call this with a string containing a pretty-printed term (or
-anything else) all its formatting will be lost. You should instead use
-[term_to_doc] or similar to work with the documents directly, or as a
-last resort use doc_of_string. *)
+    Any formatting in the string is lost. To include a pretty-printed term use
+    `FStar.Stubs.Tactics.V2.Builtins.term_to_doc` or another document builder,
+    or as a last resort `FStar.Pprint.doc_of_string`. An assumed primitive. *)
 val text : string -> document
 
-(* Create a simple error message from a string. If the string is just
-text and can be long, please use [text] instead. On the other hand, if
-you need to respect indentation/spacing in the string, then use this
-one, but if that's the case it's probably better to build a doc instead
-of lifting from a string. NB: mkmsg s is equal to [doc_of_string s]. *)
+(*| Makes a single-document error message from a string, keeping its spacing and line breaks.
+
+    `mkmsg s` is `[FStar.Pprint.doc_of_string s]`. For long prose use
+    `FStar.Errors.Msg.text` instead; for structured content it is better to
+    build a document directly than to lift a string. An assumed primitive. *)
 val mkmsg : string -> error_message

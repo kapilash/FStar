@@ -22,19 +22,13 @@ of those modules [include] this one, so its types are shared between the
 compiler and userland, and its constructors remain accessible under their
 names. *)
 
-(** The base in which an integer literal was written in the source program.
+(*| The base in which an integer literal was written in the source program.
 
-This is *presentational metadata only*: it plays no role in the meaning of a
-literal, which is fully determined by its (mathematical) integer value. It is
-recorded so that pretty-printing and code extraction can echo the literal back
-in the base the user wrote it in.
+    The constructors are `Dec` (decimal, as in `16`), `Hex` (hexadecimal, as in `0x10`), `Oct` (octal, as in `0o20`) and `Bin` (binary, as in `0b10000`).
 
-Because it is not semantically relevant, the reflection API exposes it
-*sealed* (see [FStar.Stubs.Reflection.V2.Data.vconst]). This is essential for
-soundness: the F* normalizer, the SMT solver and the extraction pipeline all
-consider two integer constants to be equal exactly when they denote the same
-number (see [FStarC.Const.eq_const]), so a metaprogram must not be able to
-distinguish [0x10] from [16]. *)
+    The base is presentational metadata only: it plays no role in the meaning of a literal, which is fully determined by its integer value. It is recorded so that pretty-printing and code extraction can echo the literal back in the base the user wrote.
+
+    Because it is not semantically relevant, the reflection API exposes it sealed (see `FStar.Stubs.Reflection.V2.Data.vconst`). This is essential for soundness: the normalizer, the SMT solver and the extraction pipeline consider two integer constants equal exactly when they denote the same number, so a metaprogram must not be able to distinguish `0x10` from `16`. *)
 [@@ FStar.Attributes.PpxDerivingYoJson; FStar.Attributes.PpxDerivingShow]
 type int_base =
   | Dec  (* e.g. 16    *)

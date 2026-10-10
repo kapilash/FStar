@@ -1,3 +1,7 @@
+# Checked examples shown in the documentation of ulib. This must come
+# before the include, which expands SUBDIRS into rule prerequisites.
+SUBDIRS += ulib
+
 FSTAR_ROOT ?= ../..
 include $(FSTAR_ROOT)/mk/test.mk
 

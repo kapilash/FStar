@@ -29,6 +29,20 @@ module O = FStar.Order
  * feeding to the SMT solver)
  *)
 
+(*| Reflected arithmetic expressions over integers and machine-integer
+    bitvector operations, as recognized by
+    `FStar.Reflection.V2.Arith.as_arith_expr`.
+
+    The constructors are:
+
+    - `Lit i`, an integer literal
+    - `Atom n t`, an uninterpreted subterm `t`, numbered `n` by first occurrence
+    - `Plus`, `Minus`, `Mult` and `Neg`, the operations of `Prims` on `int`
+    - `Land`, `Lxor`, `Lor`, `Ladd`, `Lsub`, `Shl`, `Shr`, `Udiv`, `Umod` and `MulMod`, the corresponding operations of `FStar.UInt`
+    - `NatToBv e`, the conversion `FStar.BV.int2bv`
+
+    Atoms whose terms are equal by `FStar.Reflection.TermEq.Simple.term_eq`
+    get the same number. The type is `noeq`. *)
 noeq
 type expr =
     | Lit     : int -> expr
@@ -51,10 +65,21 @@ type expr =
     | NatToBv : expr -> expr
     // | Div   : expr -> expr -> expr // Add this one?
 
+(*| The comparison relations of a `FStar.Reflection.V2.Arith.prop`: `C_Lt`,
+    `C_Eq`, `C_Gt` and `C_Ne`.
+
+    Non-strict comparisons are encoded with these, see
+    `FStar.Reflection.V2.Arith.le` and `FStar.Reflection.V2.Arith.ge`. *)
 noeq
 type connective =
     | C_Lt | C_Eq | C_Gt | C_Ne
 
+(*| Arithmetic propositions: comparisons between two
+    `FStar.Reflection.V2.Arith.expr` and their boolean combinations.
+
+    `CompProp e1 c e2` compares `e1` and `e2` with the connective `c`;
+    `AndProp`, `OrProp` and `NotProp` are conjunction, disjunction and
+    negation. The type is `noeq`. *)
 noeq
 type prop =
     | CompProp : expr -> connective -> expr -> prop
@@ -62,11 +87,23 @@ type prop =
     | OrProp   : prop -> prop -> prop
     | NotProp  : prop -> prop
 
+(*| Builds the arithmetic proposition `e1 < e2`. *)
 let lt e1 e2 = CompProp e1 C_Lt e2
+(*| Builds the arithmetic proposition `e1 <= e2`.
+
+    It is encoded as `CompProp e1 C_Lt (Plus (Lit 1) e2)`, which is
+    equivalent on integers. *)
 let le e1 e2 = CompProp e1 C_Lt (Plus (Lit 1) e2)
+(*| Builds the arithmetic proposition `e1 = e2`. *)
 let eq e1 e2 = CompProp e1 C_Eq e2
+(*| Builds the arithmetic proposition `e1 <> e2`. *)
 let ne e1 e2 = CompProp e1 C_Ne e2
+(*| Builds the arithmetic proposition `e1 > e2`. *)
 let gt e1 e2 = CompProp e1 C_Gt e2
+(*| Builds the arithmetic proposition `e1 >= e2`.
+
+    It is encoded as `CompProp (Plus (Lit 1) e1) C_Gt e2`, which is
+    equivalent on integers. *)
 let ge e1 e2 = CompProp (Plus (Lit 1) e1) C_Gt e2
 
 (* Define a traversal monad! Makes exception handling and counter-keeping easy *)
@@ -78,21 +115,32 @@ private let (let!) (m : tm 'a) (f : 'a -> tm 'b) : tm 'b =
              | Inr (x, j) -> f x j
              | s -> Inl (Inl?.v s) // why? To have a catch-all pattern and thus an easy WP
 
+(*| Lifts a tactic function into the traversal monad of this module.
+
+    The lifted computation never fails and leaves the atom table unchanged. The
+    traversal monad is a private state-and-error monad over `Tac`; use
+    `FStar.Reflection.V2.Arith.run_tm` to run it. *)
 val lift : ('a -> Tac 'b) -> ('a -> tm 'b)
 let lift f x st =
     Inr (f x, st)
 
+(*| Applies a pure function to the result of a traversal computation,
+    propagating its failure. *)
 val liftM : ('a -> 'b) -> (tm 'a -> tm 'b)
 let liftM f x =
     let! xx = x in
     return (f xx)
 
+(*| Applies a pure function to the results of two traversal computations, run
+    left to right; fails with the first failure. *)
 val liftM2 : ('a -> 'b -> 'c) -> (tm 'a -> tm 'b -> tm 'c)
 let liftM2 f x y =
     let! xx = x in
     let! yy = y in
     return (f xx yy)
 
+(*| Applies a pure function to the results of three traversal computations, run
+    left to right; fails with the first failure. *)
 val liftM3 : ('a -> 'b -> 'c -> 'd) -> (tm 'a -> tm 'b -> tm 'c -> tm 'd)
 let liftM3 f x y z =
     let! xx = x in
@@ -120,6 +168,15 @@ private let atom (t:term) : tm expr = fun (n, atoms) ->
 private val fail : (#a:Type) -> string -> tm a
 private let fail #a s = fun i -> Inl s
 
+(*| Reads a term as an arithmetic expression, treating unrecognized subterms
+    as atoms.
+
+    Applications of the recognized operators of
+    `FStar.Reflection.V2.Arith.expr` to arguments of the expected shape (head
+    an `Tv_FVar`, with the expected explicit and implicit arguments) are
+    translated recursively; integer constants become `Lit`. Any other term
+    becomes an `Atom`, numbered in the atom table so that equal terms share a
+    number. It does not fail by itself. *)
 val as_arith_expr : term -> tm expr
 #push-options "--fuel 4"
 let rec as_arith_expr (t:term) =
@@ -174,6 +231,12 @@ let rec as_arith_expr (t:term) =
         atom t
 #pop-options
 
+(*| Reads a term as an arithmetic expression whose atoms are plain names.
+
+    Like `FStar.Reflection.V2.Arith.as_arith_expr`, but when the whole term is
+    an atom that is not a variable or a top-level name (for instance an
+    application of an unknown function), the computation fails with the message
+    `not an arithmetic expression: (t)`. *)
 val is_arith_expr : term -> tm expr
 let is_arith_expr t =
   let! a = as_arith_expr t in
@@ -191,6 +254,14 @@ let is_arith_expr t =
 
 // Cannot use this...
 // val is_arith_prop : term -> tm prop
+(*| Reads a formula as an arithmetic proposition.
+
+    The term is classified with `FStar.Reflection.V2.Formula.term_as_formula`.
+    Equalities (propositional or boolean) and the comparisons `Lt` and `Le` are
+    translated with `FStar.Reflection.V2.Arith.is_arith_expr` on both sides,
+    and conjunctions and disjunctions recursively. Anything else, including
+    `Gt`, `Ge` and negation, fails with a message starting with `connector`.
+    Run the result with `FStar.Reflection.V2.Arith.run_tm`. *)
 val is_arith_prop : term -> st -> Tac (either string (prop & st))
 let rec is_arith_prop (t:term) = fun i ->
    (let! f = lift (fun t -> term_as_formula t) t in
@@ -207,11 +278,19 @@ let rec is_arith_prop (t:term) = fun i ->
 
 
 // Run the monadic computations, disregard the counter
+(*| Runs a traversal computation of this module with an empty atom table.
+
+    Returns `Inr x` on success, discarding the atom table, and `Inl msg` with
+    the error message on failure. *)
 let run_tm (m : tm 'a) : Tac (either string 'a) =
     match m (0, []) with
     | Inr (x, _) -> Inr x
     | s -> Inl (Inl?.v s) // why? To have a catch-all pattern and thus an easy WP
 
+(*| Renders an arithmetic expression as a string, for debugging.
+
+    Atoms print as `a` followed by their number. The rendering is not meant to
+    be parsed back: `Ladd`, `Lsub` and `Shr` all print as `>>`. *)
 let rec expr_to_string (e:expr) : string =
     match e with
     | Atom i _ -> "a"^(string_of_int i)
@@ -232,6 +311,14 @@ let rec expr_to_string (e:expr) : string =
     | Umod l r -> "(" ^ (expr_to_string l) ^ " % " ^ (expr_to_string r) ^ ")"
     | MulMod l r -> "(" ^ (expr_to_string l) ^ " ** " ^ (expr_to_string r) ^ ")"
 
+(*| Compares two arithmetic expressions, for sorting.
+
+    Literals compare by value and atoms by
+    `FStar.Reflection.V2.Compare.compare_term` on their terms; `Plus`, `Minus`,
+    `Mult` and `Neg` compare lexicographically with the same constructor. The
+    constructors `Lit`, `Atom`, `Plus`, `Mult` and `Neg` are ordered in that
+    order. Any other pair of constructors compares as `Gt`, so the comparison is
+    not a total order on the bitvector constructors or `Minus`. *)
 let rec compare_expr (e1 e2 : expr) : O.order =
     match e1, e2 with
     | Lit i, Lit j -> O.compare_int i j

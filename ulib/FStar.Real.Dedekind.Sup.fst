@@ -27,14 +27,20 @@ module B = FStar.Real.Dedekind.Base
 
 #set-options "--fuel 0 --ifuel 0 --z3rlimit 20"
 
+(*| Sets of cuts, represented as predicates `B.cut -> prop`. *)
 let cset = B.cut -> prop
 
+(*| `b` is an upper bound of the set of cuts `s`: every `x` in `s` satisfies `B.cle x b`. *)
 let cupper (s:cset) (b:B.cut) : prop = forall (x:B.cut). s x ==> B.cle x b
+(*| The set of cuts `s` has some upper bound. *)
 let cbounded (s:cset) : prop = exists (b:B.cut). cupper s b
+(*| The set of cuts `s` has at least one member. *)
 let cnonempty (s:cset) : prop = exists (x:B.cut). s x
 
+(*| Membership in the union of a set of cuts: `q` belongs to some cut in `s`. *)
 let unionp (s:cset) (q:Q.rat) : prop = exists (x:B.cut). s x /\ x q
 
+(*| The union of a nonempty set of cuts is nonempty. *)
 let union_ne (s:cset)
   : Lemma (requires cnonempty s) (ensures exists (q:Q.rat). unionp s q)
   = eliminate exists (x:B.cut). s x
@@ -44,6 +50,7 @@ let union_ne (s:cset)
       introduce exists (q:Q.rat). unionp s q with a and ()
     end
 
+(*| The union of a set of cuts bounded above is not all of the rationals: a rational outside an upper bound is outside the union. *)
 let union_nf (s:cset)
   : Lemma (requires cbounded s) (ensures exists (q:Q.rat). ~(unionp s q))
   = eliminate exists (b:B.cut). cupper s b
@@ -54,6 +61,7 @@ let union_nf (s:cset)
       introduce exists (q:Q.rat). ~(unionp s q) with t and ()
     end
 
+(*| The union of a set of cuts is downward closed. *)
 let union_dc (s:cset)
   : Lemma (forall (u v:Q.rat). (unionp s v /\ Q.lt u v) ==> unionp s u)
   = introduce forall (u v:Q.rat). (unionp s v /\ Q.lt u v) ==> unionp s u
@@ -64,6 +72,9 @@ let union_dc (s:cset)
         introduce exists (x2:B.cut). s x2 /\ x2 u with x and ()
       end
 
+(*| Every member `u` of the union of a set of cuts has a strictly greater member.
+
+    A helper for `FStar.Real.Dedekind.Sup.union_op`. *)
 let union_op_aux (s:cset) (u:Q.rat)
   : Lemma (requires unionp s u)
           (ensures exists (v:Q.rat). unionp s v /\ Q.lt u v)
@@ -74,10 +85,14 @@ let union_op_aux (s:cset) (u:Q.rat)
       introduce exists (v2:Q.rat). unionp s v2 /\ Q.lt u v2 with v and ()
     end
 
+(*| The union of a set of cuts has no greatest element, in the sense of `FStar.Real.Dedekind.Base.no_greatest`. *)
 let union_op (s:cset) : Lemma (B.no_greatest (unionp s))
   = B.no_greatest_intro (unionp s) (union_op_aux s)
 
 #push-options "--z3rlimit 50"
+(*| The supremum of a nonempty set of cuts that is bounded above: the union of its members, which is again a cut.
+
+    Its members are exactly those of `unionp s`. It is an upper bound (`FStar.Real.Dedekind.Sup.csup_upper`) and the least one (`FStar.Real.Dedekind.Sup.csup_least`). This gives completeness of the reals, `FStar.Real.Dedekind.lub`. *)
 let csup (s:cset)
   : Pure B.cut
       (requires cnonempty s /\ cbounded s)
@@ -86,7 +101,7 @@ let csup (s:cset)
     B.mk_cut (unionp s)
 #pop-options
 
-/// [csup s] is an upper bound ...
+(*| `csup s` is an upper bound of `s`: every cut in `s` is included in it. *)
 let csup_upper (s:cset)
   : Lemma (requires cnonempty s /\ cbounded s) (ensures cupper s (csup s))
   = introduce forall (x:B.cut). s x ==> B.cle x (csup s)
@@ -95,7 +110,7 @@ let csup_upper (s:cset)
       with introduce _ ==> _ with
         introduce exists (x2:B.cut). s x2 /\ x2 q with x and ()
 
-/// ... and it is the least one.
+(*| `csup s` is the least upper bound of `s`: it is included in every upper bound `c` of `s`. *)
 let csup_least (s:cset) (c:B.cut)
   : Lemma (requires cnonempty s /\ cbounded s /\ cupper s c)
           (ensures B.cle (csup s) c)

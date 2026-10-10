@@ -645,6 +645,14 @@ let matrix_mul_ijth_eq_sum_of_seq_for_init #c #eq #m #n #p (add mul: CE.cm c eq)
   (f: under n -> c { SB.init n f `SB.equal` seq_of_products mul (row mx i) (col my k)})
   : Lemma (ijth (matrix_mul add mul mx my) i k == SP.foldm_snoc add (SB.init n f)) = ()
 
+private
+let matrix_mul_ijth_eq_sum_of_pointwise_init #c #eq #m #n #p (add mul: CE.cm c eq)
+  (mx: matrix c m n) (my: matrix c n p) (i: under m) (k: under p) (f: under n -> c)
+  : Lemma (requires forall (j: under n). f j == mul.mult (ijth mx i j) (ijth my j k))
+          (ensures ijth (matrix_mul add mul mx my) i k == SP.foldm_snoc add (SB.init n f)) =
+  assert (SB.init n f `SB.equal` seq_of_products mul (row mx i) (col my k));
+  matrix_mul_ijth_eq_sum_of_seq_for_init add mul mx my i k f
+
 let double_foldm_snoc_of_equal_generators #c #eq (#m #n: pos) 
                                           (cm: CE.cm c eq) 
                                           (f g: under m -> under n -> c)
@@ -1111,9 +1119,9 @@ let matrix_mul_is_left_distributive #c #eq #m #n #p (add: CE.cm c eq)
     let init_rhs j = mul.mult (ijth mx i j) (ijth my j k) `add.mult` 
                      mul.mult (ijth mx i j) (ijth mz j k) in
     Classical.forall_intro eq.reflexivity; 
-    matrix_mul_ijth_eq_sum_of_seq_for_init add mul mx myz i k init_lhs; 
-    matrix_mul_ijth_eq_sum_of_seq_for_init add mul mx my i k init_xy;
-    matrix_mul_ijth_eq_sum_of_seq_for_init add mul mx mz i k init_xz;    
+    matrix_mul_ijth_eq_sum_of_pointwise_init add mul mx myz i k init_lhs; 
+    matrix_mul_ijth_eq_sum_of_pointwise_init add mul mx my i k init_xy;
+    matrix_mul_ijth_eq_sum_of_pointwise_init add mul mx mz i k init_xz;    
     SP.foldm_snoc_split_seq add (SB.init n init_xy) 
                                 (SB.init n init_xz) 
                                 (SB.init n init_rhs) 
@@ -1148,9 +1156,9 @@ let matrix_mul_is_right_distributive #c #eq #m #n #p (add: CE.cm c eq)
     let init_rhs j = mul.mult (ijth mx i j) (ijth mz j k) `add.mult`
                      mul.mult (ijth my i j) (ijth mz j k) in
     Classical.forall_intro eq.reflexivity; 
-    matrix_mul_ijth_eq_sum_of_seq_for_init add mul mxy mz i k init_lhs; 
-    matrix_mul_ijth_eq_sum_of_seq_for_init add mul mx mz i k init_xz;
-    matrix_mul_ijth_eq_sum_of_seq_for_init add mul my mz i k init_yz;
+    matrix_mul_ijth_eq_sum_of_pointwise_init add mul mxy mz i k init_lhs; 
+    matrix_mul_ijth_eq_sum_of_pointwise_init add mul mx mz i k init_xz;
+    matrix_mul_ijth_eq_sum_of_pointwise_init add mul my mz i k init_yz;
     SP.foldm_snoc_split_seq add (SB.init n init_xz) 
                                 (SB.init n init_yz) 
                                 (SB.init n init_rhs) 

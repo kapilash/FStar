@@ -38,39 +38,47 @@
 module FStar.ImmutableArray
 include FStar.ImmutableArray.Base
 
-(* Converting an immutable array back to a list *)
+(*| Converts an immutable array to the list of its elements, in order; the inverse of `FStar.ImmutableArray.Base.of_list`.
+
+    Assumed. *)
 val to_list (#a:Type u#a) (s:t a)
   : Tot (list a)
 
-(* to_list is the inverse of of_list *)
+(*| `to_list (of_list l) == l`.
+
+    Triggered automatically on `of_list l`. *)
 val to_list_of_list (#a:Type u#a) (l:list a)
   : Lemma (to_list (of_list l) == l)
           [SMTPat (of_list l)]
 
-(* of_list is the inverse of to_list *)
+(*| `of_list (to_list s) == s`: an immutable array is determined by its list of elements. *)
 val of_list_to_list (#a:Type u#a) (s:t a)
   : Lemma (of_list (to_list s) == s)
 
-(* The length of an immutable array is the length of its corresponding list *)
+(*| The length of an immutable array is the length of its list of elements.
+
+    Triggered automatically on `length s`. *)
 val length_spec (#a:Type u#a) (s:t a)
   : Lemma (length s == FStar.List.Tot.length (to_list s))
           [SMTPat (length s)]
 
-(* The indexes of an immutable array are in correspondence with its underling list *)
+(*| The element at position `i` of an immutable array is element `i` of its list of elements (`FStar.List.Tot.Base.index`).
+
+    Triggered automatically on `index s i`. *)
 val index_spec (#a:Type u#a) (s:t a) (i:nat{ i < length s })
   : Lemma (index s i == FStar.List.Tot.index (to_list s) i)
           [SMTPat (index s i)]
 
-(* The list of elements precedes the array.*)
+(*| The list of elements of an array precedes the array (`<<`), so recursion from an array to its list terminates. *)
 val to_list_precedes (#a:Type u#a) (s:t a)
   : Lemma (to_list s << s)
 
-(* Idem. *)
+(*| A list precedes (`<<`) the array created from it. *)
 let of_list_precedes (#a:Type u#a) (l:list a)
   : Lemma (l << of_list l)
   = to_list_precedes (of_list l)
 
-(* An explicit proof that elements of the array precede the array. *)
+(*| Every element of an immutable array precedes the array (`<<`); useful for termination of recursion over arrays of a recursive type. *)
 let elem_precedes (#a:Type u#a) (s:t a) (i : nat{i < length s})
   : Lemma (index s i << s)
   = FStar.List.Tot.(

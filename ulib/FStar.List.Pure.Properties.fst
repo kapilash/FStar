@@ -21,6 +21,11 @@ open FStar.List.Tot.Properties
 
 (** Properties of splitAt *)
 
+(*| Gives the lengths of the two parts of `FStar.List.Tot.Base.splitAt n l`.
+
+    When `n <= length l` the first part has length `n` and the second
+    `length l - n`; otherwise the first part is all of `l` and the second is
+    empty. *)
 let rec splitAt_length
   (#a:Type)
   (n:nat)
@@ -41,6 +46,9 @@ let rec splitAt_length
     | [] -> ()
     | _::xs -> splitAt_length (n-1) xs
 
+(*| Splitting at `n1` and then splitting the rest at `n2` agrees with splitting
+    at `n1 + n2`: the first part of the latter is the concatenation of the two
+    first parts, and the remainders are equal. *)
 let rec splitAt_assoc
   (#a:Type)
   (n1 n2:nat)
@@ -61,6 +69,7 @@ let rec splitAt_assoc
     | x :: xs -> splitAt_assoc (n1-1) n2 xs
 
 
+(*| Splitting a list at its length gives the whole list and the empty list. *)
 let rec splitAt_length_total (#a:Type) (l:list a)
   : Lemma (requires True) (ensures (splitAt (length l) l == (l, []))) (decreases l)
 =
@@ -69,8 +78,15 @@ let rec splitAt_length_total (#a:Type) (l:list a)
   | x :: xs -> splitAt_length_total xs
 
 
-(** If we [append] the two lists produced using a [splitAt], then we
-    get back the original list *)
+(*| When `n <= length l`, appending the two parts of
+    `FStar.List.Tot.Base.splitAt n l` gives back `l`, and the first part has
+    length `n`.
+
+    ```fstar
+    let split_then_join (l: list int) (n: nat{n <= length l})
+      : Lemma (let l1, l2 = splitAt n l in l1 @ l2 == l)
+      = FStar.List.Pure.Properties.lemma_splitAt_append n l
+    ``` *)
 let rec lemma_splitAt_append (#a:Type) (n:nat) (l:list a) :
   Lemma
     (requires n <= length l)
@@ -84,8 +100,7 @@ let rec lemma_splitAt_append (#a:Type) (n:nat) (l:list a) :
     | x :: xs -> lemma_splitAt_append (n-1) xs
 
 
-(** If we [splitAt] the point at which two lists have been [append]ed, then we
-    get back the original lists. *)
+(*| Splitting `l1 @ l2` at `length l1` gives back `l1` and `l2`. *)
 let rec lemma_append_splitAt (#t:Type) (l1 l2:list t) :
   Lemma
     (ensures (splitAt (length l1) (append l1 l2) == (l1, l2))) =
@@ -94,15 +109,17 @@ let rec lemma_append_splitAt (#t:Type) (l1 l2:list t) :
   | _ -> lemma_append_splitAt (tl l1) l2
 
 
-(** Fully characterize behavior of [splitAt] in terms of more standard list concepts *)
+(*| Characterizes `FStar.List.Tot.Base.splitAt`: for `n <= length l`,
+    `splitAt n l == (l1, l2)` holds exactly when `l == l1 @ l2` and
+    `length l1 = n`. *)
 let lemma_splitAt (#t: Type) (l l1 l2:list t) (n:nat{n <= length l}) :
   Lemma (splitAt n l == (l1, l2) <==> l == l1 @ l2 /\ length l1 = n) =
   lemma_splitAt_append n l;
   lemma_append_splitAt l1 l2
 
 
-(** The [hd] of the second list returned via [splitAt] is the [n]th element of
-    the original list *)
+(*| When `n < length l`, the second part of `FStar.List.Tot.Base.splitAt n l` is
+    nonempty and its head is `FStar.List.Tot.Base.index l n`. *)
 let rec lemma_splitAt_index_hd (#t:Type) (n:nat) (l:list t) :
   Lemma
     (requires (n < length l))
@@ -115,8 +132,11 @@ let rec lemma_splitAt_index_hd (#t:Type) (n:nat) (l:list t) :
   | _ -> lemma_splitAt_index_hd (n - 1) (tl l)
 
 
-(** If two lists have the same left prefix, then shorter left prefixes are
-    also the same. *)
+(*| If the first `i` elements of `l1` and `l2` agree, then so do their first
+    `j` elements for any `j <= i`.
+
+    Agreement is stated on the first components of
+    `FStar.List.Tot.Base.splitAt`; `i` must be at most both lengths. *)
 let rec lemma_splitAt_shorten_left
     (#t:Type) (l1 l2:list t) (i:nat{i <= length l1 /\ i <= length l2}) (j:nat{j <= i}) :
   Lemma
@@ -127,8 +147,8 @@ let rec lemma_splitAt_shorten_left
   | _ ->
     lemma_splitAt_shorten_left (tl l1) (tl l2) (i-1) (j-1)
 
-(** Doing an [index] on the left-part of a [splitAt] is same as doing it on
-    the original list *)
+(*| Indexing the first part of `FStar.List.Tot.Base.splitAt i l` at `j < i` is
+    the same as indexing `l` at `j`. Requires `i <= length l`. *)
 let rec lemma_splitAt_reindex_left (#t:Type) (i:nat) (l:list t) (j:nat) :
   Lemma
     (requires i <= length l /\ j < i)
@@ -141,8 +161,9 @@ let rec lemma_splitAt_reindex_left (#t:Type) (i:nat) (l:list t) (j:nat) :
   | _ -> lemma_splitAt_reindex_left (i - 1) (tl l) (j - 1)
 
 
-(** Doing an [index] on the right-part of a [splitAt] is same as doing it on
-    the original list, but shifted *)
+(*| Indexing the second part of `FStar.List.Tot.Base.splitAt i l` at `j` is the
+    same as indexing `l` at `j + i`. Requires `i <= length l` and
+    `j + i < length l`. *)
 let rec lemma_splitAt_reindex_right (#t:Type) (i:nat) (l:list t) (j:nat) :
   Lemma
     (requires i <= length l /\ j + i < length l)
@@ -158,8 +179,8 @@ let rec lemma_splitAt_reindex_right (#t:Type) (i:nat) (l:list t) (j:nat) :
 (** Properties of split3 *)
 
 
-(** The 3 pieces returned via [split3] can be joined together via an
-    [append] and a [cons] *)
+(*| The three parts `(a, b, c)` of `FStar.List.Tot.Base.split3 l n` rebuild the
+    list: `l == append a (b :: c)`. *)
 let lemma_split3_append (#t:Type) (l:list t) (n:nat{n < length l}) :
   Lemma
     (requires True)
@@ -169,7 +190,8 @@ let lemma_split3_append (#t:Type) (l:list t) (n:nat{n < length l}) :
   lemma_splitAt_append n l
 
 
-(** The middle element returned via [split3] is the [n]th [index]ed element *)
+(*| The middle element of `FStar.List.Tot.Base.split3 l n` is
+    `FStar.List.Tot.Base.index l n`. *)
 let lemma_split3_index (#t:Type) (l:list t) (n:nat{n < length l}) :
   Lemma
     (requires True)
@@ -179,7 +201,8 @@ let lemma_split3_index (#t:Type) (l:list t) (n:nat{n < length l}) :
   lemma_splitAt_index_hd n l
 
 
-(** The lengths of the left and right parts of a [split3] are as expected. *)
+(*| In `FStar.List.Tot.Base.split3 l n`, the left part has length `n` and the
+    right part has length `length l - n - 1`. *)
 let lemma_split3_length (#t:Type) (l:list t) (n:nat{n < length l}) :
   Lemma
     (requires True)
@@ -189,8 +212,9 @@ let lemma_split3_length (#t:Type) (l:list t) (n:nat{n < length l}) :
   splitAt_length n l
 
 
-(** If we [split3] on lists with the same left prefix, we get the same
-    element and left prefix. *)
+(*| If the first `n + 1` elements of `l1` and `l2` agree, then
+    `FStar.List.Tot.Base.split3` at `n` gives the same left part and the same
+    middle element on both lists. *)
 let lemma_split3_on_same_leftprefix
     (#t:Type) (l1 l2:list t) (n:nat{n < length l1 /\ n < length l2}) :
   Lemma
@@ -224,8 +248,9 @@ let lemma_split3_on_same_leftprefix
   ()
 
 
-(** If we perform an [unsnoc] on a list, then the left part is the same
-    as an [append]+[cons] on the list after [split3]. *)
+(*| Relates `FStar.List.Tot.Base.split3` to `FStar.List.Tot.Base.unsnoc` when `n`
+    is not the last index: with `(a, b, c) = split3 l n`, the list `c` is
+    nonempty and `append a (b :: fst (unsnoc c))` is `fst (unsnoc l)`. *)
 let rec lemma_split3_unsnoc (#t:Type) (l:list t) (n:nat{n < length l}) :
   Lemma
     (requires (n <> length l - 1))
@@ -241,8 +266,9 @@ let rec lemma_split3_unsnoc (#t:Type) (l:list t) (n:nat{n < length l}) :
   | _ -> lemma_split3_unsnoc (tl l) (n-1)
 
 
-(** Doing [unsnoc] and [split3] in either order leads to the same left
-    part, and element. *)
+(*| When `i` is not the last index of `l`, `FStar.List.Tot.Base.split3` at `i`
+    gives the same left part and middle element on `l` and on
+    `fst (unsnoc l)`; in particular `i` is a valid index of the latter. *)
 let lemma_unsnoc_split3 (#t:Type) (l:list t) (i:nat{i < length l}) :
   Lemma
     (requires (i <> length l - 1))
@@ -264,7 +290,8 @@ let lemma_unsnoc_split3 (#t:Type) (l:list t) (i:nat{i < length l}) :
   // assert (fst (splitAt (i+1) xs) == fst (splitAt (i+1) l));
   lemma_split3_on_same_leftprefix l xs i
 
-(** The head of the right side of a [split3] can be [index]ed from original list. *)
+(*| If the right part `c` of `FStar.List.Tot.Base.split3 l i` is nonempty, then
+    `i + 1 < length l` and the head of `c` is `FStar.List.Tot.Base.index l (i + 1)`. *)
 let rec lemma_split3_r_hd (#t:Type) (l:list t) (i:nat{i < length l}) :
   Lemma
     (ensures (let a, b, c = split3 l i in

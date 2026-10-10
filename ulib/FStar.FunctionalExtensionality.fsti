@@ -36,40 +36,35 @@ module FStar.FunctionalExtensionality
 ///   2. ulib/FStar.Map.fst and ulib/FStar.Map.fsti
 ///   3. Issue #1542 on github.com/FStarLang/FStar/issues/1542
 
-(** The type of total, dependent functions *)
+(*| The type of total, dependent functions from `a` to `b`. *)
 unfold
 let arrow (a: Type) (b: (a -> Type)) = x: a -> Tot (b x)
 
-(** Using [arrow] instead *)
+(*| Deprecated alias of `FStar.FunctionalExtensionality.arrow`. *)
 [@@ (deprecated "Use arrow instead")]
 let efun (a: Type) (b: (a -> Type)) = arrow a b
 
-(** feq #a #b f g: pointwise equality of [f] and [g] on domain [a] *)
+(*| Pointwise equality of `f` and `g` on the domain `a`.
+
+    Because of subtyping, `f` and `g` may be defined on a domain larger than
+    `a`, so `feq f g` does not imply `f == g`. Use
+    `FStar.FunctionalExtensionality.on_domain` to obtain equal functions. *)
 let feq (#a: Type) (#b: (a -> Type)) (f g: arrow a b) = forall x. {:pattern (f x)\/(g x)} f x == g x
 
-(** [on_domain a f]:
+(*| Restricts `f` to the domain `a`: the result is a function whose maximal
+    domain is `a`.
 
-    This is a key function provided by the module. It has several
-    features.
+    `on_domain a f` is pointwise equal to `f`, but not provably equal to it,
+    since `f` may have a larger domain. It is idempotent, and the normalizer
+    reduces `on_domain a f x` to `f x`. Functions restricted this way are
+    provably equal when pointwise equal; see
+    `FStar.FunctionalExtensionality.extensionality`.
 
-    1. Intuitively, [on_domain a f] can be seen as a function whose
-       maximal domain is [a].
+    Usually introduced with `FStar.FunctionalExtensionality.on_dom` or
+    `FStar.FunctionalExtensionality.on`.
 
-    2. While, [on_domain a f] is proven to be *pointwise* equal to [f],
-       crucially it is not provably equal to [f], since [f] may
-       actually have a domain larger than [a].
-
-    3. [on_domain] is idempotent
-
-    4. [on_domain a f x] has special treatment in F*'s normalizer. It
-        reduces to [f x], reflecting the pointwise equality of
-        [on_domain a f] and [f].
-
-    5. [on_domain] is marked [inline_for_extraction], to eliminate the
-        overhead of an indirection in extracted code. (This feature
-        will be exercised as part of cross-module inlining across
-        interface boundaries)
-*)
+    Marked `inline_for_extraction`, so it adds no indirection in extracted
+    code. *)
 (* [on_domain a f] is habitually applied to just [a] and [f] — [feq_on_domain]
    below even has an SMT pattern on that partial application — so its arity must
    not be read off its type, whose codomain is an arrow. *)
@@ -77,119 +72,121 @@ let feq (#a: Type) (#b: (a -> Type)) (f g: arrow a b) = forall x. {:pattern (f x
 inline_for_extraction
 val on_domain (a: Type) (#b: (a -> Type)) ([@@@strictly_positive] f: arrow a b) : Tot (arrow a b)
 
-(** feq_on_domain:
-     [on_domain a f] is pointwise equal to [f]
- *)
+(*| `on_domain a f` is pointwise equal to `f`.
+
+    Triggered automatically on `on_domain a f`. *)
 val feq_on_domain (#a: Type) (#b: (a -> Type)) (f: arrow a b)
     : Lemma (feq (on_domain a f) f) [SMTPat (on_domain a f)]
 
-(** on_domain is idempotent *)
+(*| Restricting a function twice to the same domain is the same as
+    restricting it once. *)
 val idempotence_on_domain (#a: Type) (#b: (a -> Type)) (f: arrow a b)
     : Lemma (on_domain a (on_domain a f) == on_domain a f) [SMTPat (on_domain a (on_domain a f))]
 
-(** [is_restricted a f]:
-
-     Though stated indirectly, [is_restricted a f] is valid when [f]
-     is a function whose maximal domain is equal to [a].
-
-     Equivalently, one may see its definition as
-        [exists g. f == on_domain a g]
-*)
+(*| Holds when the maximal domain of `f` is `a`, i.e. when `f` is unchanged by
+    `FStar.FunctionalExtensionality.on_domain`. *)
 let is_restricted (a: Type) (#b: (a -> Type)) (f: arrow a b) = on_domain a f == f
 
-(** restricted_t a b:
-      Lifts the [is_restricted] predicate into a refinement type
+(*| The type of dependent functions whose maximal domain is `a` and whose
+    codomain is `b`.
 
-      This is the type of functions whose maximal domain is [a]
-      and whose (dependent) co-domain is [b].
-*)
+    Pointwise equal functions of this type are provably equal. *)
 let restricted_t (a: Type) (b: (a -> Type)) = f: arrow a b {is_restricted a f}
 
-(** [a ^-> b]:
+(*| `a ^-> b` is the type of non-dependent functions whose maximal domain is
+    `a`.
 
-      Notation for non-dependent restricted functions from [a] to [b].
-      The first symbol [^] makes it right associative, as expected for
-      arrows.
- *)
+    Pointwise equal functions of this type are provably equal. The operator is
+    right associative, like `->`. *)
 unfold
 let ( ^-> ) (a b: Type) = restricted_t a (fun _ -> b)
 
-(** [on_dom a f]:
-     A convenience function to introduce a restricted, dependent function
- *)
+(*| Introduces a restricted dependent function from `f`.
+
+    The same as `FStar.FunctionalExtensionality.on_domain`, at the type
+    `FStar.FunctionalExtensionality.restricted_t`. *)
 unfold
 let on_dom (a: Type) (#b: (a -> Type)) (f: arrow a b) : restricted_t a b = on_domain a f
 
-(** [on a f]:
-     A convenience function to introduce a restricted, non-dependent function
- *)
+(*| Introduces a restricted non-dependent function from `f`, of type `a ^-> b`.
+
+    For example, `on nat (fun x -> x + 1)` is a function of type `nat ^-> int`. *)
 unfold
 let on (a #b: Type) (f: (a -> Tot b)) : (a ^-> b) = on_dom a f
 
 (**** MAIN AXIOM *)
 
-(** [extensionality]:
+(*| Functional extensionality: functions are pointwise equal on `a` exactly
+    when their restrictions to `a` are equal.
 
-     The main axiom of this module states that functions [f] and [g]
-     that are pointwise equal on domain [a] are provably equal when
-     restricted to [a] *)
+    The main axiom of the module. Triggered automatically on `feq f g`. *)
 val extensionality (a: Type) (b: (a -> Type)) (f g: arrow a b)
     : Lemma (ensures (feq #a #b f g <==> on_domain a f == on_domain a g)) [SMTPat (feq #a #b f g)]
 
 (**** DUPLICATED FOR GHOST FUNCTIONS *)
 
-(** The type of ghost, total, dependent functions *)
+(*| The type of ghost, dependent functions from `a` to `b`.
+
+    The ghost counterpart of `FStar.FunctionalExtensionality.arrow`. *)
 unfold
 let arrow_g (a: Type) (b: (a -> Type)) = x: a -> GTot (b x)
 
-(** Use [arrow_g] instead *)
+(*| Deprecated alias of `FStar.FunctionalExtensionality.arrow_g`. *)
 [@@ (deprecated "Use arrow_g instead")]
 let efun_g (a: Type) (b: (a -> Type)) = arrow_g a b
 
-(** [feq_g #a #b f g]: pointwise equality of [f] and [g] on domain [a] **)
+(*| Pointwise equality of the ghost functions `f` and `g` on the domain `a`.
+
+    The ghost counterpart of `FStar.FunctionalExtensionality.feq`. *)
 let feq_g (#a: Type) (#b: (a -> Type)) (f g: arrow_g a b) =
   forall x. {:pattern (f x)\/(g x)} f x == g x
 
-(** The counterpart of [on_domain] for ghost functions *)
+(*| Restricts the ghost function `f` to the domain `a`.
+
+    The ghost counterpart of `FStar.FunctionalExtensionality.on_domain`. *)
 [@@FStar.Attributes.smt_arity 3]
 val on_domain_g (a: Type) (#b: (a -> Type)) (f: arrow_g a b) : Tot (arrow_g a b)
 
-(** [on_domain_g a f] is pointwise equal to [f] *)
+(*| `on_domain_g a f` is pointwise equal to `f`.
+
+    Triggered automatically on `on_domain_g a f`. *)
 val feq_on_domain_g (#a: Type) (#b: (a -> Type)) (f: arrow_g a b)
     : Lemma (feq_g (on_domain_g a f) f) [SMTPat (on_domain_g a f)]
 
-(** on_domain_g is idempotent *)
+(*| Restricting a ghost function twice to the same domain is the same as
+    restricting it once. *)
 val idempotence_on_domain_g (#a: Type) (#b: (a -> Type)) (f: arrow_g a b)
     : Lemma (on_domain_g a (on_domain_g a f) == on_domain_g a f)
       [SMTPat (on_domain_g a (on_domain_g a f))]
 
-(** Counterpart of [is_restricted] for ghost functions *)
+(*| Holds when the maximal domain of the ghost function `f` is `a`.
+
+    The ghost counterpart of `FStar.FunctionalExtensionality.is_restricted`. *)
 let is_restricted_g (a: Type) (#b: (a -> Type)) (f: arrow_g a b) = on_domain_g a f == f
 
-(** Counterpart of [restricted_t] for ghost functions *)
+(*| The type of ghost dependent functions whose maximal domain is `a`.
+
+    The ghost counterpart of `FStar.FunctionalExtensionality.restricted_t`. *)
 let restricted_g_t (a: Type) (b: (a -> Type)) = f: arrow_g a b {is_restricted_g a f}
 
-(** [a ^->> b]:
-
-      Notation for ghost, non-dependent restricted functions from [a]
-      a to [b].
- *)
+(*| `a ^->> b` is the type of ghost non-dependent functions whose maximal
+    domain is `a`. *)
 unfold
 let ( ^->> ) (a b: Type) = restricted_g_t a (fun _ -> b)
 
-(** [on_dom_g a f]:
-     A convenience function to introduce a restricted, ghost, dependent function
- *)
+(*| Introduces a restricted ghost dependent function from `f`. *)
 unfold
 let on_dom_g (a: Type) (#b: (a -> Type)) (f: arrow_g a b) : restricted_g_t a b = on_domain_g a f
 
-(** [on_g a f]:
-     A convenience function to introduce a restricted, ghost, non-dependent function
- *)
+(*| Introduces a restricted ghost non-dependent function from `f`, of type
+    `a ^->> b`. *)
 unfold
 let on_g (a #b: Type) (f: (a -> GTot b)) : (a ^->> b) = on_dom_g a f
 
-(** Main axiom for ghost functions **)
+(*| Functional extensionality for ghost functions: they are pointwise equal on
+    `a` exactly when their restrictions to `a` are equal.
+
+    Triggered automatically on `feq_g f g`. *)
 val extensionality_g (a: Type) (b: (a -> Type)) (f g: arrow_g a b)
     : Lemma (ensures (feq_g #a #b f g <==> on_domain_g a f == on_domain_g a g))
       [SMTPat (feq_g #a #b f g)]

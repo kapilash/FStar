@@ -28,36 +28,72 @@ module FStar.Char
 
 module U32 = FStar.UInt32
 
-(** [char] is a new primitive type with decidable equality *)
+(*| The primitive, abstract type of characters, with decidable equality.
+
+    Each character has a numeric code, `FStar.Char.u32_of_char c`, in the
+    range described by `FStar.Char.char_code`, and conversion back with
+    `FStar.Char.char_of_u32` is a bijection. The interface fixes nothing else
+    about characters, in particular no byte encoding. *)
 new
 val char:eqtype
 
-(** A [char_code] is the representation of a UTF-8 char code in
-    an unsigned 32-bit integer whose value is at most 0x110000,
-    and not between 0xd800 and 0xe000 *)
+(*| The numeric codes of characters: 32-bit unsigned integers `n` with
+    `U32.v n < 0xd7ff`, or `0xe000 <= U32.v n <= 0x10ffff`.
+
+    This excludes the UTF-16 surrogate range and values above `0x10ffff`, the
+    largest Unicode code point. As written, the refinement also excludes
+    `0xd7ff`. *)
 type char_code = n: U32.t{U32.v n < 0xd7ff \/ (U32.v n >= 0xe000 /\ U32.v n <= 0x10ffff)}
 
-(** A primitive to extract the [char_code] of a [char] *)
+(*| Returns the numeric code of a character.
+
+    A primitive. Its inverse is `FStar.Char.char_of_u32`, as stated by the
+    assumed lemmas `FStar.Char.char_of_u32_of_char` and
+    `FStar.Char.u32_of_char_of_u32`. For the code as a `nat`, use
+    `FStar.Char.int_of_char`. *)
 val u32_of_char: char -> Tot char_code
 
-(** A primitive to promote a [char_code] to a [char] *)
+(*| Returns the character with the given numeric code.
+
+    A primitive. The inverse of `FStar.Char.u32_of_char`. For a code given as
+    a `nat`, use `FStar.Char.char_of_int`. *)
 val char_of_u32: char_code -> Tot char
 
-(** Encoding and decoding from [char] to [char_code] is the identity *)
+(*| Converting a character to its code and back gives the original character.
+
+    Assumed, not proved. Triggered automatically on `u32_of_char c`. *)
 val char_of_u32_of_char (c: char)
     : Lemma (ensures (char_of_u32 (u32_of_char c) == c)) [SMTPat (u32_of_char c)]
 
-(** Encoding and decoding from [char] to [char_code] is the identity *)
+(*| Converting a code to a character and back gives the original code.
+
+    Assumed, not proved. Triggered automatically on `char_of_u32 c`. *)
 val u32_of_char_of_u32 (c: char_code)
     : Lemma (ensures (u32_of_char (char_of_u32 c) == c)) [SMTPat (char_of_u32 c)]
 
-(** A couple of utilities to use mathematical integers rather than [U32.t]
-    to represent a [char_code] *)
+(*| Returns the numeric code of a character as a natural number.
+
+    Defined as `U32.v (u32_of_char c)`; see `FStar.Char.u32_of_char`. *)
 let int_of_char (c: char) : nat = U32.v (u32_of_char c)
+
+(*| Returns the character whose numeric code is the natural number `i`.
+
+    The precondition is the range of `FStar.Char.char_code`. Defined with
+    `FStar.Char.char_of_u32`. *)
 let char_of_int (i: nat{i < 0xd7ff \/ (i >= 0xe000 /\ i <= 0x10ffff)}) : char = char_of_u32 (U32.uint_to_t i)
 
-(** Case conversion *)
+(*| Converts a character to lowercase.
+
+    A primitive with no specification: the interface does not state which
+    characters are affected. See also `FStar.Char.uppercase` and
+    `FStar.String.lowercase`. *)
 val lowercase: char -> Tot char
+
+(*| Converts a character to uppercase.
+
+    A primitive with no specification: the interface does not state which
+    characters are affected. See also `FStar.Char.lowercase` and
+    `FStar.String.uppercase`. *)
 val uppercase: char -> Tot char
 
 #set-options "--admit_smt_queries true"

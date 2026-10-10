@@ -17,6 +17,12 @@ module FStar.OrdSetProps
  
 open FStar.OrdSet
  
+(*| Folds `g` over the elements of `s`, starting from `x`: for a non-empty set
+    the result is `g e (fold g (remove e s) x)` where `e` is the element picked
+    by `FStar.OrdSet.choose s`.
+
+    The order in which elements are visited follows `FStar.OrdSet.choose`,
+    which the interface does not specify. Compare `FStar.OrdSet.fold`. *)
 val fold: #a:eqtype -> #b:Type -> #f:cmp a -> (a -> b -> Tot b) -> s:ordset a f -> b
           -> Tot b (decreases (size s))
 let rec fold (#a:eqtype) (#b:Type) #f g s x =
@@ -28,11 +34,16 @@ let rec fold (#a:eqtype) (#b:Type) #f g s x =
 
 (**********)
 
+(*| Returns `s` with `x` added: the union of `singleton x` and `s`. *)
 let insert (#a:eqtype) (#f:cmp a) (x:a) (s:ordset a f) = union #a #f (singleton #a #f x) s
 
+(*| Union defined by folding `FStar.OrdSetProps.insert` over the first set.
+
+    `FStar.OrdSetProps.union_lemma'` shows that it equals `FStar.OrdSet.union`. *)
 val union':#a:eqtype -> #f:cmp a -> ordset a f -> ordset a f -> Tot (ordset a f)
 let union' (#a:eqtype) #f s1 s2 = fold (fun e (s:ordset a f) -> insert e s) s1 s2
 
+(*| `FStar.OrdSetProps.union'` and `FStar.OrdSet.union` have the same members. *)
 val union_lemma: #a:eqtype -> #f:cmp a -> s1:ordset a f -> s2:ordset a f
                  -> Lemma (requires (True))
                     (ensures (forall x. mem x (union s1 s2) = mem x (union' s1 s2)))
@@ -42,6 +53,7 @@ let rec union_lemma (#a:eqtype) #f s1 s2 =
   else
     union_lemma (remove (Some?.v (choose s1)) s1) s2
 
+(*| `FStar.OrdSetProps.union'` and `FStar.OrdSet.union` are equal. *)
 val union_lemma': #a:eqtype -> #f:cmp a -> s1:ordset a f -> s2:ordset a f
                   -> Lemma (requires (True))
                      (ensures (union s1 s2 = union' s1 s2))

@@ -17,11 +17,20 @@ module FStar.PredicateExtensionality
 module F = FStar.FunctionalExtensionality
 module P = FStar.PropositionalExtensionality
 
+(*| Total, `prop`-valued predicates on `a`. *)
 let predicate (a:Type) = a -> Tot prop
 
+(*| Pointwise equivalence of two predicates. *)
 let peq (#a:Type) (p1:predicate a) (p2:predicate a) =
   forall x. (p1 x <==> p2 x)
 
+(*| Pointwise equivalent predicates are equal when restricted to the domain
+    `a`.
+
+    Combines `FStar.FunctionalExtensionality` with
+    `FStar.PropositionalExtensionality`. The predicates themselves may not be
+    provably equal, since they may be defined on a larger domain; see
+    `FStar.FunctionalExtensionality.on_domain`. *)
 let predicateExtensionality (a:Type) (p1 p2:predicate a)
   : Lemma (requires (peq #a p1 p2))
   	  (ensures (F.on_domain a p1==F.on_domain a p2))

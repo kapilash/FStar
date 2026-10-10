@@ -21,18 +21,18 @@ open FStar.Stubs.Tactics.Types
 (* This module is extracted, don't add any `assume val`s or extraction
  * will break. (`synth_by_tactic` is fine) *)
 
-(* The representation of a tactic: a function from a proofstate to a
-   (possibly divergent) result.  This plays no role in typechecking;
-   it is only used for extraction and reification. *)
+(*| The representation of a tactic: a possibly divergent function from a reference to the proof state to a result.
+
+    It plays no role in typechecking and is only used for extraction and reification of the `TAC` effect, whose return and bind are `FStar.Tactics.Effect.tac_return` and `FStar.Tactics.Effect.tac_bind`. *)
 inline_for_extraction
 let tac_repr (a:Type) : Type = ref_proofstate -> Dv a
 
-(* monadic return *)
+(*| The return of the `TAC` effect: the tactic that ignores the proof state and returns `x`. *)
 inline_for_extraction
 let tac_return (a:Type) (x:a) : tac_repr a =
   fun _ -> x
 
-(* monadic bind *)
+(*| The bind of the `TAC` effect: runs `t1` on the proof state, then runs `t2` applied to its result on the same proof state. *)
 inline_for_extraction
 let tac_bind (a:Type) (b:Type) (t1:tac_repr a) (t2:(a -> tac_repr b)) : tac_repr b =
   fun ps ->
@@ -67,15 +67,25 @@ effect TacRO (a:Type) = TAC a
    [squash False -> Tac a]. *)
 effect TacF (a:Type) = TAC a
 
+(*| A technical marker opening the region of the interface in which the lifts into `TAC` are defined; it is not meant to be used.
+
+    The implementation typechecks that region with SMT queries admitted. Closed by `FStar.Tactics.Effect.lift_div_tac_interleave_end`. *)
 val lift_div_tac_interleave_begin : unit
 #push-options "--admit_smt_queries true"
+(*| The lift from `Div` to `TAC`, which lets divergent code run inside tactics: the resulting tactic ignores the proof state and runs `f`.
+
+    Used by `sub_effect Div ~> TAC`. *)
 inline_for_extraction
 let lift_div_tac (a:Type) (f:unit -> Dv a) : tac_repr a
   = fun _ -> f ()
+(*| The lift from `NDET` to `TAC`: the resulting tactic ignores the proof state and runs `f`.
+
+    `NDET` already reaches `TAC` through `DIV`, but this direct lift spares reification (hence extraction of metaprograms) from going through the representation of `DIV`, which does not exist. Used by `sub_effect NDET ~> TAC`. *)
 inline_for_extraction
 let lift_ndet_tac (a:Type) (f:unit -> Nd a) : tac_repr a
   = fun _ -> f ()
 #pop-options
+(*| A technical marker closing the region opened by `FStar.Tactics.Effect.lift_div_tac_interleave_begin`; it is not meant to be used. *)
 val lift_div_tac_interleave_end : unit
 
 sub_effect Div ~> TAC = lift_div_tac
@@ -87,76 +97,81 @@ sub_effect NDET ~> TAC = lift_ndet_tac
 
 /// assert p by t
 
+(*| Marks a proposition `p` to be proved by running the tactic `t` rather than by SMT.
+
+    When a verification condition contains `with_tactic t p`, the engine runs `t` on a goal for `p` instead of sending `p` to SMT; goals that remain after the tactic are sent to the SMT solver. Logically the marker is equivalent to `p` (see `FStar.Tactics.Effect.by_tactic_seman` and `FStar.Tactics.Effect.unfold_with_tactic`). It is usually introduced by `assert p by t` through `FStar.Tactics.Effect.assert_by_tactic`. *)
 val with_tactic (t : unit -> Tac unit) (p:prop) : prop
 
-(* This syntactic marker will generate a goal of the shape x == ?u for
- * a new unification variable ?u, and run tactic [t] to solve this goal.
- * If after running [t], the uvar was solved and only trivial goals remain
- * in the proofstate, then `rewrite_with_tactic t x` will be replaced
- * by the solution of ?u *)
+(*| Marks a term to be rewritten by a tactic: `rewrite_with_tactic t x` is replaced by a term that the tactic proves equal to `x`.
+
+    When the marker is met, the engine creates a goal `x == ?u` for a new unification variable `?u` and runs `t` on it. If afterwards `?u` is solved and only trivial goals remain, the marker is replaced by the solution of `?u`. Logically, `rewrite_with_tactic t x` equals `x` (see `FStar.Tactics.Effect.unfold_rewrite_with_tactic`). *)
 val rewrite_with_tactic (t:unit -> Tac unit) (#a:Type) (x:a) : a
 
-(* This will run the tactic in order to (try to) produce a term of type
- * t. Note that the type looks dangerous from a logical perspective. It
- * should not lead to any inconsistency, however, as any time this term
- * appears during typechecking, it is forced to be fully applied and the
- * tactic is run. A failure of the tactic is a typechecking failure. It
- * can be thought as a language construct, and not a real function. *)
+(*| Synthesizes a term of type `t` by running a tactic whose single goal is `t`; the meaning of the syntax `_ by tau`.
+
+    The type looks unsound, but it should not lead to inconsistency: wherever this term appears during typechecking it must be fully applied, and the tactic is run. A failure of the tactic is a typechecking failure. Think of it as a language construct rather than a real function.
+
+    ```fstar
+    let forty_two : int = _ by (exact (`42))
+    ``` *)
 val synth_by_tactic : (#t:Type) -> (unit -> Tac unit) -> Tot t
 
+(*| Proves `p` by running a tactic on it rather than by SMT; the meaning of the syntax `assert p by tau`.
+
+    Its precondition is `FStar.Tactics.Effect.with_tactic t p`, which makes the engine run `t` on a goal for `p`. Goals that remain after the tactic are sent to the SMT solver.
+
+    ```fstar
+    let _ = assert (True /\ True) by (split (); trivial (); trivial ())
+    ``` *)
 val assert_by_tactic (p:prop) (t:unit -> Tac unit)
   : Pure unit
          (requires (set_range_of (with_tactic t p) (range_of t)))
          (ensures (fun _ -> p))
 
+(*| States that `FStar.Tactics.Effect.with_tactic tau phi` implies `phi`: the tactic marker does not change the meaning of the proposition. *)
 val by_tactic_seman (tau:unit -> Tac unit) (phi:prop)
   : Lemma (with_tactic tau phi ==> phi)
 
-(* One can always bypass the well-formedness of metaprograms. It does
- * not matter as they are only run at typechecking time, and if they get
- * stuck, the compiler will simply raise an error.
- *
- * The argument's binder has type [squash False] rather than [unit]: that is how
- * the metaprogram gets to assume it is unreachable, and how its body may be
- * partial.  Write [assume_safe (fun _ -> ...)] and not [fun () -> ...]: a unit
- * *pattern* forces the binder's type to [unit] and so erases the [False]. *)
+(*| Runs a metaprogram without proving that it is well-formed, by letting it assume `False`.
+
+    This is fine since metaprograms only run at typechecking time; if one gets stuck, the compiler simply raises an error. The argument's binder has type `squash False` rather than `unit`: that is how the metaprogram assumes it is unreachable and may be partial. Write `assume_safe (fun _ -> ...)`, not `fun () -> ...`: a unit pattern forces the binder's type to `unit` and so loses the `False`. *)
 let assume_safe (#a:Type) (tau:squash False -> Tac a) : Tac a = admit (); tau ()
 
 private let tac a b = a -> Tac b
 private let tactic a = tac unit a
 
-(* A hook to preprocess a definition before it is typechecked and
- * elaborated. This attribute should be used for top-level lets. The
- * tactic [tau] will be called on a quoting of the definition of the let
- * (if many, once for each) and the result of the tactic will replace
- * the definition. There are no goals involved, nor any proof obligation
- * to be done by the tactic. *)
+(*| An attribute that runs a tactic on the definition of a top-level `let` before it is typechecked and elaborated.
+
+    The tactic `tau` receives a quotation of the definition (once for each definition if there are several) and its result replaces the definition. No goals are involved and there is no proof obligation. Use it as `[@@preprocess_with tau]`. *)
 val preprocess_with (tau : term -> Tac term) : Tot unit
 
-(* A hook to postprocess a definition, after typechecking, and rewrite
- * it into a (provably equal) shape chosen by the user. This can be used
- * to implement custom transformations previous to extraction, such as
- * selective inlining. When ran added to a definition [let x = E], the
- * [tau] metaprogram is presented with a goal of the shape [E == ?u] for
- * a fresh uvar [?u]. The metaprogram should then both instantiate [?u]
- * and prove the equality. *)
+(*| An attribute that rewrites a definition, after typechecking, into a provably equal shape chosen by a tactic.
+
+    On `let x = E`, the metaprogram is given a goal `E == ?u` for a fresh `?u`, and must both instantiate `?u` and prove the equality. Useful for custom transformations before extraction, such as selective inlining. See `FStar.Tactics.Effect.postprocess_for_extraction_with` for a version that only affects extraction, and `FStar.Tactics.Effect.postprocess_type` to process the type too.
+
+    ```fstar
+    [@@postprocess_with (fun () -> norm [delta_only [`%forty_two]]; trefl ())]
+    let fifty : int = forty_two + 8
+    ``` *)
 val postprocess_with (tau : unit -> Tac unit) : Tot unit
 
-(* Similar semantics to [postprocess_with], but the metaprogram only
- * runs before extraction, and hence typechecking and the logical
- * environment should not be affected at all. *)
+(*| Like `FStar.Tactics.Effect.postprocess_with`, but the metaprogram only runs before extraction, so typechecking and the logical environment are not affected at all. *)
 val postprocess_for_extraction_with (tau : unit -> Tac unit) : Tot unit
 
-(* When using [postprocess_with] or [postprocess_for_extraction_with]
- * this flag indicates that the type of the definition should also be
- * processed with the same tactic. *)
+(*| An attribute which, together with `FStar.Tactics.Effect.postprocess_with` or `FStar.Tactics.Effect.postprocess_for_extraction_with`, says that the type of the definition should be processed by the same tactic too. *)
 val postprocess_type : unit
 
 #set-options "--no_tactics"
 
+(*| Proves `FStar.Tactics.Effect.with_tactic t p` from `p`, without running the tactic: the converse of `FStar.Tactics.Effect.by_tactic_seman`.
+
+    Checked with tactics disabled, so the marker is treated as an ordinary proposition here. *)
 val unfold_with_tactic (t:unit -> Tac unit) (p:prop)
   : Lemma (requires p)
           (ensures (with_tactic t p))
 
+(*| States that `FStar.Tactics.Effect.rewrite_with_tactic t p` is equal to `p`.
+
+    Checked with tactics disabled, so the marker is treated as an ordinary term here. *)
 val unfold_rewrite_with_tactic (t:unit -> Tac unit) (#a:Type) (p:a)
   : Lemma (rewrite_with_tactic t p == p)

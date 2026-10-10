@@ -27,8 +27,16 @@ module FStar.Custard
     proofs and the SMT encoding see through [dyn] even where the normalizer
     is not allowed to. *)
 
-(** The attribute Custard refuses to unfold; see [dyn]. *)
+(*| The attribute that Custard never unfolds during specialization; see `FStar.Custard.dyn`. *)
 val no_specialize : unit
 
+(*| Marks an argument that Custard should pass at run time instead of specializing on it.
+
+    Logically `dyn x` is `x`: its postcondition is `r == x`, so proofs and the
+    SMT encoding see through it. Because it carries the
+    `FStar.Custard.no_specialize` attribute, the normalizer does not unfold it
+    while computing specialization keys, so the argument becomes a hole and the
+    callee is compiled once with the value passed at run time (ordinary
+    dictionary passing). Custard then compiles `dyn` itself away. *)
 [@@ no_specialize]
 val dyn (#a:Type) (x:a) : Pure a (requires True) (ensures fun r -> r == x)

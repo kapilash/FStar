@@ -1,0 +1,12 @@
+paragraph
+  text "Appends "
+  code "s2"
+  text " to the end of "
+  code "s1"
+  text "."
+paragraph
+  text "The result has length "
+  code "length s1 + length s2"
+  text ". See "
+  code "FStar.Seq.Base.lemma_len_append"
+  text "."

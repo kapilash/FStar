@@ -15,12 +15,22 @@
 *)
 module FStar.MarkovsPrinciple
 
+(*| Markov's principle: if a decidable predicate `p` on `nat` is not false
+    everywhere, returns (ghostly) some `n` with `p n`.
+
+    Assumed, not proved. The result is only available in ghost code. *)
 assume val markovs_principle : p:(nat -> Tot bool) -> Ghost nat
   (requires (~(forall (n:nat). ~(p n))))
   (ensures (fun n -> p n))
 
 (* here is a stronger variant of Markov's principle
    (might be as strong as indefinite description?) *)
+(*| A stronger variant of `FStar.MarkovsPrinciple.markovs_principle` in which
+    the predicate `p` may itself be ghost (`GTot bool`), so it need not be
+    decidable.
+
+    Assumed, not proved. It may be as strong as indefinite description (see
+    `FStar.IndefiniteDescription`). *)
 assume val stronger_markovs_principle : p:(nat -> GTot bool) -> Ghost nat
   (requires (~(forall (n:nat). ~(p n))))
   (ensures (fun n -> p n))

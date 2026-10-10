@@ -19,10 +19,16 @@ module FStar.Stubs.TypeChecker.Core
 // A stub for using some type definition from FStar.TypeChecker.Core
 //
 
+(*| The effect at which a term is typed by the core typechecker: `E_Total` for total terms and `E_Ghost` for ghost (computationally irrelevant) terms.
+
+    Mirrors the compiler's own type. Used in the typing tokens of `FStar.Stubs.Tactics.Types.Reflection` and the typing primitives of `FStar.Stubs.Tactics.V2.Builtins`. *)
 type tot_or_ghost = 
   | E_Total
   | E_Ghost
 
+(*| Which side of a relation between two terms to unfold, as suggested by `FStar.Stubs.Tactics.V2.Builtins.maybe_relate_after_unfolding`.
+
+    The constructors are `Left`, `Right`, `Both` and `Neither`. Mirrors the compiler's own type. *)
 type unfold_side =
   | Left
   | Right

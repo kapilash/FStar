@@ -4,9 +4,25 @@ ALL_EXPECT := $(patsubst %,%.expect.md,$(ALL_FSTs) $(ALL_FSTIs))
 ALL_GEN := $(patsubst %,%.gen.md,$(ALL_FSTs) $(ALL_FSTIs))
 ALL_DIFF := $(patsubst %,%-diff,$(ALL_FSTs) $(ALL_FSTIs))
 
-all: regression-tests
+all: regression-tests fixtures unit-tests
+
+unit-tests:
+	@python3 test_ulib_docs.py -q
+	@echo 'Test "unit-tests" passed.'
 
 regression-tests: $(ALL_DIFF)
+
+# The doc lint accepts every fixture in fixtures/valid and rejects every
+# fixture in fixtures/invalid.
+fixtures:
+	@python3 ulib_docs.py lint-file fixtures/valid/*.md
+	@for f in fixtures/invalid/*.md; do \
+	  if python3 ulib_docs.py lint-file $$f > /dev/null; then \
+	    echo "lint accepted $$f"; exit 1; fi; \
+	done
+	@echo 'Test "fixtures" passed.'
+
+.PHONY: fixtures unit-tests
 
 %.expect.md: %
 	@touch $@

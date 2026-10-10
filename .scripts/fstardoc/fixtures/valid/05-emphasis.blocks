@@ -1,0 +1,8 @@
+paragraph
+  text "The result is "
+  strong
+    text "not"
+  text " normalized; it is "
+  emph
+    text "equal"
+  text " but not identical."
