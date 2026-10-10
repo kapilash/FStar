@@ -17,6 +17,9 @@ module FStar.UInt32
 
 (**** THIS MODULE IS GENERATED AUTOMATICALLY USING [mk_int.sh], DO NOT EDIT DIRECTLY ****)
 
+(*| The bit width of `t`.
+
+    Values of `t` range from `0` to `pow2 n - 1`. *)
 unfold let n = 32
 
 /// For FStar.UIntN.fstp: anything that you fix/update here should be
@@ -42,65 +45,75 @@ unfold let n = 32
 
 open FStar.UInt
 
-(** Abstract type of machine integers, with an underlying
-    representation using a bounded mathematical integer *)
+(*| Abstract type of unsigned `n`-bit machine integers.
+
+    The value of `x : t` is `v x`, a mathematical integer in `FStar.UInt.uint_t n`, that is between `0` and `pow2 n - 1`; every operation of this module is specified through `v`. Equality is decidable, and the polymorphic `=` agrees with `eq`. Code extraction treats this type and its operations as machine integer primitives; their behaviour is assumed to match this `v`-based model. *)
 new val t : eqtype
 
-(** A coercion that projects a bounded mathematical integer from a
-    machine integer *)
+(*| The value of a machine integer, as a mathematical integer in `FStar.UInt.uint_t n`.
+
+    This is the specification model of all operations of this module. Its inverse is `uint_to_t`. *)
 val v (x:t) : Tot (uint_t n)
 
+(*| The proposition that `x` is representable as an unsigned `n`-bit integer, that is `0 <= x <= pow2 n - 1`.
+
+    It is `FStar.UInt.fits x n` as a `prop`. *)
 let fits (x:int) : prop = UInt.fits x n
 
-(** A coercion that injects a bounded mathematical integers into a
-    machine integer *)
+(*| Converts a mathematical integer in `FStar.UInt.uint_t n` to a machine integer, with `v (uint_to_t x) == x`.
+
+    The argument must already be in range; this is enforced by its type, not by wrapping. Integer literals with the type's suffix are desugared to this conversion, with the range check done when desugaring. *)
 val uint_to_t (x:uint_t n) : Pure t
   (requires True)
   (ensures (fun y -> v y = x))
 
-(** Injection/projection inverse *)
+(*| Converting a machine integer to its value and back is the identity: `uint_to_t (v x) == x`.
+
+    Triggered automatically on `v x`. *)
 val uv_inv (x : t) : Lemma
   (ensures (uint_to_t (v x) == x))
   [SMTPat (v x)]
 
-(** Projection/injection inverse *)
+(*| Converting an in-range mathematical integer to a machine integer and back is the identity: `v (uint_to_t x) == x`.
+
+    Triggered automatically on `uint_to_t x`. *)
 val vu_inv (x : uint_t n) : Lemma
   (ensures (v (uint_to_t x) == x))
   [SMTPat (uint_to_t x)]
 
-(** An alternate form of the injectivity of the [v] projection *)
+(*| The value function `v` is injective: machine integers with equal values are equal.
+
+    It has no SMT pattern; call it to conclude `x1 == x2` from `v x1 == v x2`. *)
 val v_inj (x1 x2: t): Lemma
   (requires (v x1 == v x2))
   (ensures (x1 == x2))
 
-(** Constants 0 and 1 *)
+(*| The machine integer with value `0`. *)
 val zero : x:t{v x = 0}
 
+(*| The machine integer with value `1`. *)
 val one : x:t{v x = 1}
 
 (**** Addition primitives *)
 
-(** Bounds-respecting addition
+(*| Addition that cannot overflow: `v (add a b) == v a + v b`; requires the sum to fit in `n` bits.
 
-    The precondition enforces that the sum does not overflow,
-    expressing the bound as an addition on mathematical integers *)
+    The precondition is `FStar.UInt.size (v a + v b) n`. Infix form `+`. See `add_mod` for wrapping addition and `add_underspec` for addition without a precondition. *)
 val add (a:t) (b:t) : Pure t
   (requires (size (v a + v b) n))
   (ensures (fun c -> v a + v b = v c))
 
-(** Underspecified, possibly overflowing addition:
+(*| Addition that may overflow, with a result specified only when it does not.
 
-    The postcondition only enures that the result is the sum of the
-    arguments in case there is no overflow *)
+    If the sum fits in `n` bits, `v (add_underspec a b) == v a + v b`; otherwise the result is an unspecified value of type `t`. No precondition. Infix form `+?^`. See `add_mod` for the wrapping semantics. *)
 val add_underspec (a:t) (b:t) : Pure t
   (requires True)
   (ensures (fun c ->
     size (v a + v b) n ==> v a + v b = v c))
 
-(** Addition modulo [2^n]
+(*| Wrapping addition: `v (add_mod a b) == (v a + v b) % pow2 n`.
 
-    Machine integers can always be added, but the postcondition is now
-    in terms of addition modulo [2^n] on mathematical integers *)
+    Total; specified by `FStar.UInt.add_mod`. Infix form `+%^`. See `add` for addition that must not overflow. *)
 val add_mod (a:t) (b:t) : Pure t
   (requires True)
   (ensures (fun c -> FStar.UInt.add_mod (v a) (v b) = v c))
@@ -108,27 +121,24 @@ val add_mod (a:t) (b:t) : Pure t
 (**** Minus primitives *)
 
 
-(** Bounds-respecting subtraction
+(*| Subtraction that cannot underflow: `v (sub a b) == v a - v b`; requires `v b <= v a`.
 
-    The precondition enforces that the difference does not underflow,
-    expressing the bound as a difference on mathematical integers *)
+    The precondition is `FStar.UInt.size (v a - v b) n`. Infix form `-`. See `sub_mod` for wrapping subtraction and `sub_underspec` for subtraction without a precondition. *)
 val sub (a:t) (b:t) : Pure t
   (requires (size (v a - v b) n))
   (ensures (fun c -> v a - v b = v c))
 
-(** Underspecified, possibly overflowing subtraction:
+(*| Subtraction that may underflow, with a result specified only when it does not.
 
-    The postcondition only enures that the result is the difference of
-    the arguments in case there is no underflow *)
+    If `v a - v b` fits in `n` bits (that is `v b <= v a`), `v (sub_underspec a b) == v a - v b`; otherwise the result is an unspecified value of type `t`. No precondition. Infix form `-?^`. *)
 val sub_underspec (a:t) (b:t) : Pure t
   (requires True)
   (ensures (fun c ->
     size (v a - v b) n ==> v a - v b = v c))
 
-(** Minus modulo [2^n]
+(*| Wrapping subtraction: `v (sub_mod a b) == (v a - v b) % pow2 n`.
 
-    Machine integers can always be subtractd, but the postcondition is
-    now in terms of subtraction modulo [2^n] on mathematical integers *)
+    Total; specified by `FStar.UInt.sub_mod`, so the result is `v a - v b + pow2 n` when `v a < v b`. Infix form `-%^`. *)
 val sub_mod (a:t) (b:t) : Pure t
   (requires True)
   (ensures (fun c -> FStar.UInt.sub_mod (v a) (v b) = v c))
@@ -136,43 +146,42 @@ val sub_mod (a:t) (b:t) : Pure t
 (**** Multiplication primitives *)
 
 
-(** Bounds-respecting multiplication
+(*| Multiplication that cannot overflow: `v (mul a b) == v a * v b`; requires the product to fit in `n` bits.
 
-    The precondition enforces that the product does not overflow,
-    expressing the bound as a product on mathematical integers *)
+    The precondition is `FStar.UInt.size (v a * v b) n`. Infix form `*`. See `mul_mod` for wrapping multiplication and `mul_underspec` for multiplication without a precondition. *)
 val mul (a:t) (b:t) : Pure t
   (requires (size (v a * v b) n))
   (ensures (fun c -> v a * v b = v c))
 
-(** Underspecified, possibly overflowing product
+(*| Multiplication that may overflow, with a result specified only when it does not.
 
-    The postcondition only enures that the result is the product of
-    the arguments in case there is no overflow *)
+    If the product fits in `n` bits, `v (mul_underspec a b) == v a * v b`; otherwise the result is an unspecified value of type `t`. No precondition. Infix form `*?^`. *)
 val mul_underspec (a:t) (b:t) : Pure t
   (requires True)
   (ensures (fun c ->
     size (v a * v b) n ==> v a * v b = v c))
 
-(** Multiplication modulo [2^n]
+(*| Wrapping multiplication: `v (mul_mod a b) == (v a * v b) % pow2 n`.
 
-    Machine integers can always be multiplied, but the postcondition
-    is now in terms of product modulo [2^n] on mathematical integers *)
+    Total; specified by `FStar.UInt.mul_mod`. Infix form `*%^`. *)
 val mul_mod (a:t) (b:t) : Pure t
   (requires True)
   (ensures (fun c -> FStar.UInt.mul_mod (v a) (v b) = v c))
 
 (**** Division primitives *)
 
-(** Euclidean division of [a] and [b], with [b] non-zero *)
+(*| Unsigned division rounding down: `v (div a b) == v a / v b`; the divisor must be nonzero.
+
+    The nonzero divisor is required by the refinement on `b`; the quotient always fits, so there is no overflow. Infix form `/`. *)
 val div (a:t) (b:t{v b <> 0}) : Pure t
   (requires (True))
   (ensures (fun c -> v a / v b = v c))
 
 (**** Modulo primitives *)
 
-(** Euclidean remainder
+(*| Remainder of unsigned division: `v (rem a b) == v a % v b`; the divisor must be nonzero.
 
-    The result is the modulus of [a] with respect to a non-zero [b] *)
+    Specified by `FStar.UInt.mod`. Infix form `%`. *)
 val rem (a:t) (b:t{v b <> 0}) : Pure t
   (requires True)
   (ensures (fun c -> FStar.UInt.mod (v a) (v b) = v c))
@@ -181,90 +190,114 @@ val rem (a:t) (b:t{v b <> 0}) : Pure t
 
 /// Also see FStar.BV
 
-(** Bitwise logical conjunction *)
+(*| Bitwise AND: `v (logand x y) == FStar.UInt.logand (v x) (v y)`.
+
+    Total. Infix form `&^`. *)
 val logand (x:t) (y:t) : Pure t
   (requires True)
   (ensures (fun z -> v x `logand` v y = v z))
 
-(** Bitwise logical exclusive-or *)
+(*| Bitwise exclusive OR: `v (logxor x y) == FStar.UInt.logxor (v x) (v y)`.
+
+    Total. Infix form `^^`. *)
 val logxor (x:t) (y:t) : Pure t
   (requires True)
   (ensures (fun z -> v x `logxor` v y == v z))
 
-(** Bitwise logical disjunction *)
+(*| Bitwise OR: `v (logor x y) == FStar.UInt.logor (v x) (v y)`.
+
+    Total. Infix form `|^`. *)
 val logor (x:t) (y:t) : Pure t
   (requires True)
   (ensures (fun z -> v x `logor` v y == v z))
 
-(** Bitwise logical negation *)
+(*| Bitwise complement: `v (lognot x) == FStar.UInt.lognot (v x)`.
+
+    Total. Its value is `pow2 n - 1 - v x` (see `FStar.UInt.lemma_lognot_value`). *)
 val lognot (x:t) : Pure t
   (requires True)
   (ensures (fun z -> lognot (v x) == v z))
 
 (**** Shift operators *)
 
-(** Shift right with zero fill, shifting at most the integer width *)
+(*| Logical right shift by `s` bits, filling with zeros: `v (shift_right a s) == FStar.UInt.shift_right (v a) k`, where `k` is the value of `s`.
+
+    The shift amount `s` is a 32-bit unsigned integer whose value `k` must be strictly less than `n`. The value is `v a / pow2 k` (see `FStar.UInt.shift_right_value_lemma`). Infix form `>>^`. *)
 val shift_right (a:t) (s:t) : Pure t
   (requires (v s < n))
   (ensures (fun c -> FStar.UInt.shift_right (v a) (v s) = v c))
 
-(** Shift left with zero fill, shifting at most the integer width *)
+(*| Left shift by `s` bits, filling with zeros: `v (shift_left a s) == FStar.UInt.shift_left (v a) k`, where `k` is the value of `s`.
+
+    The shift amount `s` is a 32-bit unsigned integer whose value `k` must be strictly less than `n`. Bits shifted out are lost: the value is `(v a * pow2 k) % pow2 n` (see `FStar.UInt.shift_left_value_lemma`). Infix form `<<^`. *)
 val shift_left (a:t) (s:t) : Pure t
   (requires (v s < n))
   (ensures (fun c -> FStar.UInt.shift_left (v a) (v s) = v c))
 
 (**** Rotate operators *)
 
-(** Rotate right, rotating at most the integer width *)
+(*| Rotates the `n` bits of `a` right by `s` positions: `v (rotate_right a s) == FStar.UInt.rotate_right (v a) k`, where `k` is the value of `s`.
+
+    The rotation amount `s` is a 32-bit unsigned integer whose value `k` must be strictly less than `n`. Infix form `>>>^`. *)
 val rotate_right (a:t) (s:t) : Pure t
   (requires (v s < n))
   (ensures (fun c -> FStar.UInt.rotate_right (v a) (v s) = v c))
 
-(** Rotate left, rotating at most the integer width *)
+(*| Rotates the `n` bits of `a` left by `s` positions: `v (rotate_left a s) == FStar.UInt.rotate_left (v a) k`, where `k` is the value of `s`.
+
+    The rotation amount `s` is a 32-bit unsigned integer whose value `k` must be strictly less than `n`. Infix form `<<<^`. *)
 val rotate_left (a:t) (s:t) : Pure t
   (requires (v s < n))
   (ensures (fun c -> FStar.UInt.rotate_left (v a) (v s) = v c))
 
 (**** Comparison operators *)
 
-(** Equality
+(*| Boolean equality of machine integers: `eq a b = (v a = v b)`.
 
-    Note, it is safe to also use the polymorphic decidable equality
-    operator [=] *)
+    The polymorphic decidable equality `a = b` gives the same result. Infix form `=^`. *)
 let eq (a:t) (b:t) : Tot bool = eq #n (v a) (v b)
 
-(** Inequality *)
+(*| Boolean disequality of machine integers: `ne a b = (v a <> v b)`.
+
+    Infix form `<>^`. *)
 let ne (a:t) (b:t) : Tot bool = ne #n (v a) (v b)
 
-(** Greater than *)
+(*| Unsigned comparison `v a > v b`, as a boolean.
+
+    Infix form `>`. *)
 let gt (a:t) (b:t) : Tot bool = gt #n (v a) (v b)
 
-(** Greater than or equal *)
+(*| Unsigned comparison `v a >= v b`, as a boolean.
+
+    Infix form `>=`. *)
 let gte (a:t) (b:t) : Tot bool = gte #n (v a) (v b)
 
-(** Less than *)
+(*| Unsigned comparison `v a < v b`, as a boolean.
+
+    Infix form `<`. *)
 let lt (a:t) (b:t) : Tot bool = lt #n (v a) (v b)
 
-(** Less than or equal *)
+(*| Unsigned comparison `v a <= v b`, as a boolean.
+
+    Infix form `<=`. *)
 let lte (a:t) (b:t) : Tot bool = lte #n (v a) (v b)
 
-(** Unary negation *)
+(*| Two's complement negation modulo `pow2 n`, defined as `add_mod (lognot a) (uint_to_t 1)`.
+
+    Total; its value is `(pow2 n - v a) % pow2 n`, so `minus` of zero is zero. *)
 inline_for_extraction
 let minus (a:t) = add_mod (lognot a) (uint_to_t 1)
 
-(** The maximum shift value for this type, i.e. its width minus one,
-    as an  *)
+(*| The width minus one, `n - 1`, as a 32-bit unsigned integer.
+
+    This is the largest shift or rotation amount accepted by `shift_left`, `shift_right`, `rotate_left` and `rotate_right`. *)
 inline_for_extraction
 let n_minus_one = uint_to_t (n - 1)
 
-(** A constant-time way to compute the equality of
-    two machine integers.
-
-    With inspiration from https://git.zx2c4.com/WireGuard/commit/src/crypto/curve25519-hacl64.h?id=2e60bb395c1f589a398ec606d611132ef9ef764b
-
-    Note, the branching on [a=b] is just for proof-purposes.
-  *)
 #push-options "--fuel 1"
+(*| Equality mask for constant-time code: all bits set (`pow2 n - 1`) when `v a = v b`, and `0` otherwise.
+
+    Total. The result is computed with `logxor`, `minus`, `logor`, `shift_right` and `sub_mod`; the `if` on `a = b` in its definition only selects proof steps. The specification only states the value, not timing behaviour. The `CNoInline` attribute asks C extraction not to inline it. Adapted from [a WireGuard commit](https://git.zx2c4.com/WireGuard/commit/src/crypto/curve25519-hacl64.h?id=2e60bb395c1f589a398ec606d611132ef9ef764b). *)
 [@ CNoInline ]
 let eq_mask (a:t) (b:t)
   : Pure t
@@ -299,11 +332,9 @@ private
 val lemma_sub_msbs (a:t) (b:t)
     : Lemma ((msb (v a) = msb (v b)) ==> (v a < v b <==> msb (v (sub_mod a b))))
 
-(** A constant-time way to compute the [>=] inequality of
-    two machine integers.
+(*| Unsigned comparison mask for constant-time code: all bits set (`pow2 n - 1`) when `v a >= v b`, and `0` otherwise.
 
-    With inspiration from https://git.zx2c4.com/WireGuard/commit/src/crypto/curve25519-hacl64.h?id=0a483a9b431d87eca1b275463c632f8d5551978a
-  *)
+    Total. The result is computed with bitwise operations, `sub_mod` and `shift_right`, without branching. The specification only states the value, not timing behaviour. The `CNoInline` attribute asks C extraction not to inline it. Adapted from [a WireGuard commit](https://git.zx2c4.com/WireGuard/commit/src/crypto/curve25519-hacl64.h?id=0a483a9b431d87eca1b275463c632f8d5551978a). *)
 [@ CNoInline ]
 let gte_mask (a:t) (b:t)
   : Pure t
@@ -326,29 +357,53 @@ let gte_mask (a:t) (b:t)
 #pop-options
 
 (*** Infix notations *)
+(*| Infix notation for `add`: addition that requires the sum to fit in `n` bits. *)
 inline_for_extraction unfold let ( + )  = add
+(*| Infix notation for `add_underspec`: addition whose result is unspecified on overflow. *)
 inline_for_extraction unfold let ( +?^ ) = add_underspec
+(*| Infix notation for `add_mod`: addition modulo `pow2 n`. *)
 inline_for_extraction unfold let ( +%^ ) = add_mod
+(*| Infix notation for `sub`: subtraction that requires the difference to be nonnegative. *)
 inline_for_extraction unfold let ( - )  = sub
+(*| Infix notation for `sub_underspec`: subtraction whose result is unspecified on underflow. *)
 inline_for_extraction unfold let ( -?^ ) = sub_underspec
+(*| Infix notation for `sub_mod`: subtraction modulo `pow2 n`. *)
 inline_for_extraction unfold let ( -%^ ) = sub_mod
+(*| Infix notation for `mul`: multiplication that requires the product to fit in `n` bits. *)
 inline_for_extraction unfold let ( * ) = mul
+(*| Infix notation for `mul_underspec`: multiplication whose result is unspecified on overflow. *)
 inline_for_extraction unfold let ( *?^ )= mul_underspec
+(*| Infix notation for `mul_mod`: multiplication modulo `pow2 n`. *)
 inline_for_extraction unfold let ( *%^ )= mul_mod
+(*| Infix notation for `div`: unsigned division by a nonzero divisor. *)
 inline_for_extraction unfold let ( / )  = div
+(*| Infix notation for `rem`: unsigned remainder by a nonzero divisor. *)
 inline_for_extraction unfold let ( % )  = rem
+(*| Infix notation for `logxor`: bitwise exclusive OR. *)
 inline_for_extraction unfold let ( ^^ )  = logxor
+(*| Infix notation for `logand`: bitwise AND. *)
 inline_for_extraction unfold let ( &^ )  = logand
+(*| Infix notation for `logor`: bitwise OR. *)
 inline_for_extraction unfold let ( |^ )  = logor
+(*| Infix notation for `shift_left`: left shift by fewer than `n` bits. *)
 inline_for_extraction unfold let ( <<^ ) = shift_left
+(*| Infix notation for `shift_right`: logical right shift by fewer than `n` bits. *)
 inline_for_extraction unfold let ( >>^ ) = shift_right
+(*| Infix notation for `rotate_left`: left rotation by fewer than `n` bits. *)
 inline_for_extraction unfold let ( <<<^ ) = rotate_left
+(*| Infix notation for `rotate_right`: right rotation by fewer than `n` bits. *)
 inline_for_extraction unfold let ( >>>^ ) = rotate_right
+(*| Infix notation for `eq`: boolean equality. *)
 inline_for_extraction unfold let ( =^ )  = eq
+(*| Infix notation for `ne`: boolean disequality. *)
 inline_for_extraction unfold let ( <>^ ) = ne
+(*| Infix notation for `gt`: unsigned greater-than test. *)
 inline_for_extraction unfold let ( > )  = gt
+(*| Infix notation for `gte`: unsigned greater-than-or-equal test. *)
 inline_for_extraction unfold let ( >= ) = gte
+(*| Infix notation for `lt`: unsigned less-than test. *)
 inline_for_extraction unfold let ( < )  = lt
+(*| Infix notation for `lte`: unsigned less-than-or-equal test. *)
 inline_for_extraction unfold let ( <= ) = lte
 
 (*** Deprecated infix notations
@@ -358,26 +413,44 @@ the ones on [int] and from those of the other widths. Type-based overloading
 now tells them apart, so they are spelled without the suffix. The old spellings
 remain, deprecated, so that code written against the earlier library keeps
 checking. *)
+(*| Deprecated spelling of `+` (that is `add`); use `+`. *)
 [@@deprecated "use ( + )"]  inline_for_extraction unfold let ( +^ )  = add
+(*| Deprecated spelling of `-` (that is `sub`); use `-`. *)
 [@@deprecated "use ( - )"]  inline_for_extraction unfold let ( -^ )  = sub
+(*| Deprecated spelling of `*` (that is `mul`); use `*`. *)
 [@@deprecated "use ( * )"]  inline_for_extraction unfold let ( *^ )  = mul
+(*| Deprecated spelling of `/` (that is `div`); use `/`. *)
 [@@deprecated "use ( / )"]  inline_for_extraction unfold let ( /^ )  = div
+(*| Deprecated spelling of `%` (that is `rem`); use `%`. *)
 [@@deprecated "use ( % )"]  inline_for_extraction unfold let ( %^ )  = rem
+(*| Deprecated spelling of `>` (that is `gt`); use `>`. *)
 [@@deprecated "use ( > )"]  inline_for_extraction unfold let ( >^ )  = gt
+(*| Deprecated spelling of `>=` (that is `gte`); use `>=`. *)
 [@@deprecated "use ( >= )"] inline_for_extraction unfold let ( >=^ ) = gte
+(*| Deprecated spelling of `<` (that is `lt`); use `<`. *)
 [@@deprecated "use ( < )"]  inline_for_extraction unfold let ( <^ )  = lt
+(*| Deprecated spelling of `<=` (that is `lte`); use `<=`. *)
 [@@deprecated "use ( <= )"] inline_for_extraction unfold let ( <=^ ) = lte
 
 (**** To input / output constants *)
-(** In decimal representation *)
+(*| Renders a machine integer as a decimal string.
+
+    Total, but it has no logical specification: its definition in the implementation is admitted and the behaviour is provided by the extraction runtime. *)
 val to_string: t -> Tot string
 
-(** In hex representation (with leading 0x) *)
+(*| Renders a machine integer as a hexadecimal string with a leading `0x`.
+
+    Total, but it has no logical specification: its definition in the implementation is admitted and the behaviour is provided by the extraction runtime. *)
 val to_string_hex: t -> Tot string
 
-(** In fixed-width hex representation (left-padded with zeroes, no leading 0x) *)
+(*| Renders a machine integer as a fixed-width hexadecimal string, left-padded with zeros to the full width of the type, without a leading `0x`.
+
+    Total, but it has no logical specification: its definition in the implementation is admitted and the behaviour is provided by the extraction runtime. *)
 val to_string_hex_pad: t -> Tot string
 
+(*| Parses a machine integer from its string representation.
+
+    Total, but it has no logical specification: its definition in the implementation is admitted and the behaviour, including on strings that are not a valid in-range literal, is left to the extraction runtime. Nothing can be proved about its result. *)
 val of_string: string -> Tot t
 
 //This private primitive is used internally by the

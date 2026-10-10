@@ -19,15 +19,22 @@ include FStar.Stubs.Syntax.Syntax
 include FStar.IntegerLiteral
 open FStar.Stubs.Reflection.Types
 
-(* The type of a string observable only with a tactic.
-   All values of type ppname_t are provably equal *)
+(*| The type of pretty-printing names attached to variables and binders.
+
+    It is a sealed string (`FStar.Sealed.Inhabited.sealed ""`): the name can be
+    observed only by a tactic, and all values of `ppname_t` are provably equal,
+    so renaming a variable never changes the logical meaning of a term. Build
+    one with `FStar.Stubs.Reflection.V2.Data.as_ppname`. *)
 let ppname_t = FStar.Sealed.Inhabited.sealed ""
+(*| Seals a string as a pretty-printing name. *)
 let as_ppname (x:string) : ppname_t = FStar.Sealed.Inhabited.seal x
 
+(*| The signedness of a machine integer literal: `Signed` or `Unsigned`. *)
 type int_signedness =
   | Signed
   | Unsigned
 
+(*| The width of a machine integer literal: `Int8`, `Int16`, `Int32`, `Int64`, or `Sizet` for `FStar.SizeT`. *)
 type int_width =
   | Int8
   | Int16
@@ -35,6 +42,25 @@ type int_width =
   | Int64
   | Sizet
 
+(*| The view of a constant appearing in a term (`Tv_Const`) or a pattern (`Pat_Constant`).
+
+    Constructors:
+
+    - `C_Unit`: the unit value `()`.
+    - `C_Int n base`: a mathematical integer literal.
+    - `C_MachineInt n base s w`: a machine integer literal of signedness `s` and width `w`.
+    - `C_True` and `C_False`: the boolean literals.
+    - `C_String s`: a string literal.
+    - `C_Range r`: a source range constant.
+    - `C_Reify` and `C_Reflect eff`: the `reify` operator and the `reflect` operator of effect `eff`.
+    - `C_Real r`: a real literal, represented exactly (see `FStar.RealLiteral`).
+    - `C_Char c`: a character literal.
+
+    The sealed `FStar.IntegerLiteral.int_base` of integer literals records the
+    base the literal was written in. It is presentational only and sealed so
+    that the logic cannot observe it: `0x10` and `16` are the same constant and
+    are provably equal. Metaprograms can read it with
+    `FStar.Stubs.Tactics.Unseal.unseal`. *)
 noeq
 type vconst =
   | C_Unit      : vconst
@@ -57,10 +83,29 @@ type vconst =
   | C_Char      : Char.char -> vconst
   (* TODO: complete *)
 
+(*| A list of reflected universes. *)
 type universes = list universe
 
+(*| The view of an identifier: its name and its source range.
+
+    See `FStar.Stubs.Reflection.V2.Builtins.inspect_ident`. *)
 type ident_view = string & range
 
+(*| The view of a pattern in a `match` branch.
+
+    Constructors:
+
+    - `Pat_Constant c`: matches the constant `c`.
+    - `Pat_Cons head univs subpats`: a fully applied constructor `head`, optionally with explicit universes.
+    - `Pat_Var sort ppname`: a pattern-bound variable.
+    - `Pat_Dot_Term t`: a dot pattern, whose value is determined by the rest of the pattern and the type.
+
+    Each sub-pattern of `Pat_Cons` is paired with a boolean that marks whether
+    it is an explicitly provided implicit argument. A `Pat_Var` carries no
+    variable: the variable is referred to by its de Bruijn index in the branch
+    body, and its sort is sealed. The sort is ignored by the typechecker but
+    can guide a metaprogram heuristically; all `Pat_Var` patterns are
+    provably equal. *)
 noeq
 type pattern =
  // A built-in constant
@@ -91,8 +136,19 @@ type pattern =
      t : option term ->
      pattern
 
+(*| A `match` branch: a pattern and the body it guards.
+
+    The variables bound by the pattern are de Bruijn indices in the body. *)
 type branch = pattern & term  // | pattern -> term
 
+(*| The qualifier of a binder or an argument.
+
+    Constructors:
+
+    - `Q_Explicit`: an ordinary explicit argument.
+    - `Q_Implicit`: an implicit argument, written with `#`.
+    - `Q_Equality`: an argument that must be resolved by unification up to equality, written with `$`.
+    - `Q_Meta t`: an implicit argument solved by running the tactic `t`, written `#[t]`. *)
 noeq
 type aqualv =
   | Q_Implicit
@@ -100,9 +156,14 @@ type aqualv =
   | Q_Equality
   | Q_Meta of term
 
+(*| An argument of an application: a term and its qualifier. *)
 type argv = term & aqualv
 
-(* A named variable, with a unique identifier *)
+(*| The view of a named variable: its unique identifier `uniq`, its sealed sort and its pretty-printing name.
+
+    Variables are distinguished by `uniq` only; the sealed sort and name are
+    for metaprograms and printing. See
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_namedv`. *)
 noeq
 type namedv_view = {
   uniq   : nat;
@@ -110,7 +171,9 @@ type namedv_view = {
   ppname : ppname_t;
 }
 
-(* A bound variable, with a de Bruijn index *)
+(*| The view of a de Bruijn bound variable: its `index`, its sealed sort and its pretty-printing name.
+
+    See `FStar.Stubs.Reflection.V2.Builtins.inspect_bv`. *)
 noeq
 type bv_view = {
   index  : nat;
@@ -118,8 +181,9 @@ type bv_view = {
   ppname : ppname_t;
 }
 
-(* Binders consist of a type, qualifiers, and attributes. There is also
-a sealed name. *)
+(*| The view of a binder: its `sort`, qualifier `qual`, attributes `attrs` and pretty-printing name `ppname`.
+
+    See `FStar.Stubs.Reflection.V2.Builtins.inspect_binder`. *)
 noeq
 type binder_view = {
   sort   : typ;
@@ -128,25 +192,46 @@ type binder_view = {
   ppname : ppname_t;
 }
 
-(* A binding is a variable in the environment. It is like a namedv, but has
-an explicit (unsealed) sort *)
+(*| A variable in a typing environment: like a named variable, but with an unsealed sort.
+
+    Fields: the unique identifier `uniq`, the `sort` and the pretty-printing
+    name `ppname`. See `FStar.Stubs.Reflection.V2.Builtins.vars_of_env`. *)
 noeq
 type binding = {
   uniq   : nat;
   sort   : typ;
   ppname : ppname_t;
 }
+(*| A list of environment bindings. *)
 type bindings = list binding
 
-(** We use the binder type for letbindings and refinements,
-but no qualifiers nor attributes can appear there. We call these
-binders simple. This module assumes an abstract predicate
-for them, which is later assumed to be equivalent to being a binder
-without qualifiers nor attributes (once inspect_binder is in scope). *)
+(*| Holds of binders that have an explicit qualifier and no attributes.
+
+    Binders are also used in let bindings and refinements, where qualifiers and
+    attributes cannot appear; such binders are called simple. The predicate is
+    abstract here; its meaning is given by
+    `FStar.Stubs.Reflection.V2.Builtins.simple_binder_defn`, once
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_binder` is in scope. *)
 val binder_is_simple : binder -> Tot bool
 
+(*| A binder with an explicit qualifier and no attributes, as used in let bindings and refinements.
+
+    See `FStar.Stubs.Reflection.V2.Data.binder_is_simple`. *)
 type simple_binder = b:binder{binder_is_simple b}
 
+(*| The view of a universe level, one constructor deep.
+
+    Constructors:
+
+    - `Uv_Zero`: universe 0.
+    - `Uv_Succ u`: the successor of `u`.
+    - `Uv_Max us`: the maximum of the universes `us`.
+    - `Uv_BVar n`: a bound universe variable, by de Bruijn index.
+    - `Uv_Name id`: a named universe variable.
+    - `Uv_Unif uv`: a universe unification variable.
+    - `Uv_Unk`: an unknown universe.
+
+    See `FStar.Stubs.Reflection.V2.Builtins.inspect_universe`. *)
 noeq
 type universe_view =
   | Uv_Zero : universe_view
@@ -157,6 +242,42 @@ type universe_view =
   | Uv_Unif : universe_uvar -> universe_view
   | Uv_Unk  : universe_view
 
+(*| The locally nameless view of a term, one constructor deep, as returned by `FStar.Stubs.Reflection.V2.Builtins.inspect_ln`.
+
+    Constructors:
+
+    - `Tv_Var v`: a named (free) variable.
+    - `Tv_BVar v`: a variable bound by de Bruijn index.
+    - `Tv_FVar v`: a top-level name.
+    - `Tv_UInst v us`: a top-level name instantiated with universes `us`.
+    - `Tv_App hd a`: the application of `hd` to one argument `a`.
+    - `Tv_Abs bv body`: a lambda abstraction.
+    - `Tv_Arrow bv c`: an arrow type with codomain computation type `c`.
+    - `Tv_Type u`: the universe `Type u`.
+    - `Tv_Refine b ref`: the refinement of the sort of `b` by `ref`.
+    - `Tv_Const c`: a constant.
+    - `Tv_Uvar n u`: a unification variable.
+    - `Tv_Let recf attrs b def body`: a local, possibly recursive, let binding.
+    - `Tv_Match scrutinee ret brs`: a pattern match, with an optional return annotation.
+    - `Tv_AscribedT e t tac use_eq`: `e` ascribed with type `t`, optionally with a tactic.
+    - `Tv_AscribedC e c tac use_eq`: `e` ascribed with computation type `c`, optionally with a tactic.
+    - `Tv_Unknown`: an underscore to be inferred.
+    - `Tv_Unsupp`: a term that could not be inspected because the view does not support it.
+
+    Bodies of binding forms refer to the bound variable by de Bruijn index.
+    Applications are binary; nested `Tv_App` nodes represent multiple
+    arguments. Metaprograms usually work instead with the named view
+    `FStar.Tactics.NamedView.named_term_view`, which opens binders with fresh
+    names.
+
+    ```fstar
+    let is_fvar_named (t:term) (qn:name) : bool =
+      match inspect_ln t with
+      | Tv_FVar fv -> inspect_fv fv = qn
+      | _ -> false
+
+    let _ = assert True by (guard (is_fvar_named (`Prims.int) int_lid))
+    ``` *)
 noeq
 type term_view =
   | Tv_Var    : v:namedv -> term_view
@@ -177,34 +298,59 @@ type term_view =
   | Tv_Unknown  : term_view // An underscore: _
   | Tv_Unsupp : term_view // failed to inspect, not supported
 
+(*| Holds of term views that are not ascriptions (`Tv_AscribedT` or `Tv_AscribedC`). *)
 let notAscription (tv:term_view) : bool =
   not (Tv_AscribedT? tv) && not (Tv_AscribedC? tv)
 
 // Very basic for now
-(* A [decreases] clause: either a lexicographically ordered list of terms, or a
-   well-founded relation together with a term.  Mirrors
-   [FStarC.Syntax.Syntax.decreases_order]. *)
+(*| A `decreases` clause.
+
+    Constructors:
+
+    - `Decreases_lex ts`: the lexicographic ordering on the list of terms `ts`.
+    - `Decreases_wf rel e`: the term `e` decreasing according to the well-founded relation `rel`.
+
+    Mirrors the compiler's internal `decreases_order`. *)
 noeq
 type decreases_order =
   | Decreases_lex : list term -> decreases_order
   | Decreases_wf  : term -> term -> decreases_order
 
-(* Flags on a computation type.  Mirrors [FStarC.Syntax.Syntax.cflag]. *)
+(*| A flag attached to a computation type.
+
+    Constructors:
+
+    - `SMTPAT t`: the SMT patterns of a `Lemma`, as a list literal `t`.
+    - `DECREASES d`: a `decreases` clause.
+
+    Mirrors the compiler's internal `cflag`. *)
 noeq
 type cflag =
   | SMTPAT    : term -> cflag   (* a [Lemma]'s SMT patterns, as a list literal *)
   | DECREASES : decreases_order -> cflag
 
-(* A computation type.  This mirrors [FStarC.Syntax.Syntax.comp_typ] field for
-   field: an effect name, a result type and some flags, and nothing else.
+(*| The view of a computation type: an effect name, a result type and flags.
 
-   In particular a computation type carries no logical content.  A precondition
-   is an implicit [squash] binder on the arrow, so it is not part of a [comp] at
-   all; a postcondition is a refinement of [result_typ].  There are no
-   weakest-precondition transformers and no effect indices.  A client that
-   wants to read a specification back in the shape a user wrote it must
-   inspect the arrow's binders for the trailing implicit [squash] one, and
-   [result_typ] for its refinement.  See doc/ref/simplified_effect_system.md. *)
+    Fields:
+
+    - `effect_name`: the root effect, after resolving effect abbreviations.
+    - `result_typ`: the result type.
+    - `flags`: the flags, see `FStar.Stubs.Reflection.V2.Data.cflag`.
+    - `source_effect_name`: the effect name as written, for presentation only.
+
+    This mirrors the compiler's internal computation type field for field, so
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_comp` and
+    `FStar.Stubs.Reflection.V2.Builtins.pack_comp` are exact inverses.
+
+    A computation type carries no logical content of its own. A precondition is
+    an implicit `squash` binder on the arrow and a postcondition is a
+    refinement of `result_typ`; there are no weakest-precondition transformers
+    and no effect indices. To read back a specification in the shape a user
+    wrote it, look for a trailing implicit `squash` binder on the arrow and for
+    a refinement on `result_typ`. An effect abbreviation such as `Lemma` is
+    resolved away in `effect_name`; `source_effect_name` keeps the written name
+    and equals `effect_name` when no abbreviation was used. See
+    `doc/ref/simplified_effect_system.md`. *)
 noeq
 type comp_view = {
   effect_name : name;
@@ -218,26 +364,56 @@ type comp_view = {
   source_effect_name : name;
 }
 
-(* The two effects the desugarer gives to an arrow with no effect annotation.
-   An effect abbreviation is resolved away before it reaches a [comp], so these
-   are root effect names and can be compared literally. *)
+(*| The name of the `Tot` effect, `["Prims"; "Tot"]`.
+
+    This is the effect the desugarer gives to an arrow with no effect
+    annotation. Effect abbreviations are resolved before they reach a
+    computation type, so this root name can be compared literally; see
+    `FStar.Stubs.Reflection.V2.Data.is_tot_comp`. *)
 let tot_effect_name  : name = ["Prims"; "Tot"]
+(*| The name of the `GTot` effect, `["Prims"; "GTot"]`.
+
+    Effect abbreviations are resolved before they reach a computation type, so
+    this root name can be compared literally; see
+    `FStar.Stubs.Reflection.V2.Data.is_gtot_comp`. *)
 let gtot_effect_name : name = ["Prims"; "GTot"]
 
+(*| Builds the view of a computation type with the given effect and result type, no flags, and the same source effect name. *)
 let mk_comp_view (eff:name) (res:typ) : comp_view =
   { effect_name = eff; result_typ = res; flags = []; source_effect_name = eff }
 
+(*| Builds the view of a `Tot` computation type with the given result type.
+
+    ```fstar
+    let _ = assert_norm (is_tot_comp (mk_tot_comp (`int)))
+    ``` *)
 let mk_tot_comp  (res:typ) : comp_view = mk_comp_view tot_effect_name res
+(*| Builds the view of a `GTot` computation type with the given result type. *)
 let mk_gtot_comp (res:typ) : comp_view = mk_comp_view gtot_effect_name res
 
+(*| Tests whether a computation view has the `Tot` effect.
+
+    Compares `effect_name` with `FStar.Stubs.Reflection.V2.Data.tot_effect_name`,
+    so a computation written with an abbreviation of `Tot` also qualifies. *)
 let is_tot_comp  (cv:comp_view) : bool = cv.effect_name = tot_effect_name
+(*| Tests whether a computation view has the `GTot` effect.
+
+    Compares `effect_name` with `FStar.Stubs.Reflection.V2.Data.gtot_effect_name`. *)
 let is_gtot_comp (cv:comp_view) : bool = cv.effect_name = gtot_effect_name
+(*| Tests whether a computation view has the `Tot` or the `GTot` effect. *)
 let is_tot_or_gtot_comp (cv:comp_view) : bool = is_tot_comp cv || is_gtot_comp cv
 
-(* Constructor for an inductive type. See explanation in
-[Sg_Inductive] below. *)
+(*| A constructor of an inductive type: its fully qualified name and its type.
+
+    In `Sg_Inductive`, the constructor type is already opened with the
+    universe variables and applied to the parameters of the type. *)
 type ctor = name & typ
 
+(*| The view of a top-level let binding.
+
+    Fields: the bound name `lb_fv`, its universe variables `lb_us`, its type
+    `lb_typ` and its definition `lb_def`. See
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_lb`. *)
 noeq
 type lb_view = {
     lb_fv : fv;
@@ -246,6 +422,22 @@ type lb_view = {
     lb_def : term
 }
 
+(*| The view of a top-level declaration, as returned by `FStar.Stubs.Reflection.V2.Builtins.inspect_sigelt`.
+
+    Constructors:
+
+    - `Sg_Let r lbs`: a let declaration with bindings `lbs`, recursive when `r` is true.
+    - `Sg_Inductive nm univs params typ cts`: an inductive type and its constructors.
+    - `Sg_Val nm univs typ`: a `val` declaration.
+    - `Unk`: any other declaration, which the view does not support.
+
+    In `Sg_Inductive`, `nm` is the name of the type, `univs` its universe
+    variables, `params` its parameters, `typ` its type after the parameters
+    (the indices and the resulting `Type`), and `cts` its constructors, opened
+    with `univs` and applied to `params`. Internally a type and its
+    constructors are split into a bundle; the view coalesces them, which is
+    more convenient for metaprograms. Mutually inductive types are not
+    supported. *)
 noeq
 type sigelt_view =
   | Sg_Let :
@@ -273,7 +465,31 @@ type sigelt_view =
 
   | Unk
 
-(* Qualifiers for sigelts, see src/FStar.Syntax.Syntax for an explanation. *)
+(*| A qualifier on a top-level declaration, as read by `FStar.Stubs.Reflection.V2.Builtins.sigelt_quals`.
+
+    The constructors mirror the compiler's internal qualifiers. Those a user
+    can write:
+
+    - `Assumption`: declared without definition (`assume`).
+    - `New`: a fresh type constant, distinct from all others (`new`).
+    - `Private`: invisible outside the module.
+    - `Unfold_for_unification_and_vcgen`: always unfolded by the normalizer (`unfold`).
+    - `Irreducible`: never unfolded by the normalizer.
+    - `Inline_for_extraction`: unfolded when compiling the program.
+    - `NoExtract`: not extracted.
+    - `Noeq` and `Unopteq`: how the decidable-equality predicate of a type is generated.
+    - `TotalEffect`: an effect that forbids non-termination (`total`).
+    - `Logic`: intended for use in the refinement logic.
+    - `Reifiable` and `Reflectable eff`: effect qualifiers.
+
+    The others are internal and added by the compiler: `Visible_default`,
+    `Discriminator`, `Projector`, `RecordType`, `RecordConstructor` (record
+    namespace and field names), `Action` (an effect action),
+    `ExceptionConstructor` (a constructor of `exn`), `HasMaskedEffect` (a let
+    binding that may have a top-level effect), `Effect` (a name that
+    corresponds to an effect), `OnlyName` (a placeholder for name resolution)
+    and `InternalAssumption` (an assumption generated by F\*, such as a
+    `hasEq` axiom). *)
 noeq
 type qualifier =
   | Assumption
@@ -302,4 +518,5 @@ type qualifier =
   | OnlyName
 
 (* Should remove, but there are clients using it. *)
+(*| Natural numbers used as variable identifiers. Kept for compatibility with existing clients. *)
 let var : eqtype = nat

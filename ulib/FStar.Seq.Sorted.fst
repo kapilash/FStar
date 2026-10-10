@@ -17,9 +17,17 @@ module FStar.Seq.Sorted
 
 open FStar.Seq
 
+(*| Holds when `f` relates every two elements of `s` in index order: for all
+    indices `i <= j`, `f (index s i) (index s j)`.
+
+    For a total order this is equivalent to the boolean
+    `FStar.Seq.Properties.sorted`; see `FStar.Seq.Sorted.sorted_pred_sorted_lemma`
+    and `FStar.Seq.Sorted.sorted_sorted_pred_lemma`. *)
 let sorted_pred (#a:eqtype) (f:tot_ord a) (s:seq a) : prop =
   forall (i j: (k:nat{k<length s})). i <= j ==> f (index s i) (index s j)
 
+(*| The tail of a sequence satisfying `FStar.Seq.Sorted.sorted_pred` also
+    satisfies it. *)
 val sorted_pred_tail :
   #a:eqtype ->
   f:tot_ord a ->
@@ -27,6 +35,7 @@ val sorted_pred_tail :
   Lemma (requires (sorted_pred #a f s)) (ensures (sorted_pred #a f (tail s)))
 let sorted_pred_tail #a f s = ()
 
+(*| `FStar.Seq.Sorted.sorted_pred f s` implies `FStar.Seq.Properties.sorted f s`. *)
 val sorted_pred_sorted_lemma :
   #a:eqtype ->
   f:tot_ord a ->
@@ -40,6 +49,8 @@ let rec sorted_pred_sorted_lemma #a f s =
     sorted_pred_sorted_lemma #a f (tail s)
   end
 
+(*| Proves `FStar.Seq.Sorted.sorted_pred f s` from a lemma `g` establishing
+    `f (index s i) (index s j)` for every `i <= j`. *)
 let intro_sorted_pred (#a:eqtype) (f:tot_ord a) (s:seq a)
   ($g:(i:nat{i < length s} -> j:nat{j < length s} -> Lemma (requires (i <= j)) (ensures (f (index s i) (index s j)))))
   : Lemma (sorted_pred #a f s)
@@ -48,6 +59,8 @@ let intro_sorted_pred (#a:eqtype) (f:tot_ord a) (s:seq a)
   FStar.Classical.forall_intro_2 (fun (i j:(k:nat{k < length s})) ->
     (FStar.Classical.arrow_to_impl (aux i j)) <: Lemma (i <= j ==> f (index s i) (index s j)))
 
+(*| If the first two elements of `s` are related by `f` and the tail satisfies
+    `FStar.Seq.Sorted.sorted_pred`, then `s` satisfies it. *)
 val sorted_pred_cons_lemma :
   #a:eqtype ->
   f:tot_ord a ->
@@ -62,6 +75,18 @@ let sorted_pred_cons_lemma #a f s =
   in
   intro_sorted_pred #a f s aux
 
+(*| For a total order `f`, `FStar.Seq.Properties.sorted f s` implies
+    `FStar.Seq.Sorted.sorted_pred f s`, which relates all pairs of elements and
+    not just adjacent ones.
+
+    ```fstar
+    let int_le (x y: int) : bool = x <= y
+
+    let sorted_first_le_last (s: FStar.Seq.Base.seq int{FStar.Seq.Base.length s > 0})
+      : Lemma (requires FStar.Seq.Properties.sorted int_le s)
+              (ensures int_le (FStar.Seq.Base.index s 0) (FStar.Seq.Properties.last s))
+      = FStar.Seq.Sorted.sorted_sorted_pred_lemma int_le s
+    ``` *)
 val sorted_sorted_pred_lemma :
   #a:eqtype ->
   f:tot_ord a ->
@@ -72,6 +97,8 @@ let rec sorted_sorted_pred_lemma #a f s =
   else if length s = 1 then ()
   else (sorted_sorted_pred_lemma #a f (tail s) ; sorted_pred_cons_lemma #a f s)
 
+(*| Every slice of a sequence satisfying `FStar.Seq.Sorted.sorted_pred` also
+    satisfies it. *)
 val sorted_pred_slice_lemma :
   #a:eqtype ->
   f:tot_ord a ->
@@ -81,6 +108,7 @@ val sorted_pred_slice_lemma :
   Lemma (requires (sorted_pred #a f s)) (ensures (sorted_pred #a f (slice s i j)))
 let sorted_pred_slice_lemma #a f s i j = ()
 
+(*| Every slice of a sequence sorted by a total order is sorted. *)
 val sorted_slice_lemma :
   #a:eqtype ->
   f:tot_ord a ->
@@ -93,6 +121,8 @@ let sorted_slice_lemma #a f s i j =
   sorted_pred_slice_lemma #a f s i j ;
   sorted_pred_sorted_lemma #a f (slice s i j)
 
+(*| Both parts of `FStar.Seq.Properties.split s i` are sorted when `s` is sorted
+    by a total order. *)
 val sorted_split_lemma :
   #a:eqtype ->
   f:tot_ord a ->
@@ -104,6 +134,9 @@ let sorted_split_lemma #a f s i =
   sorted_slice_lemma #a f s 0 i ;
   sorted_slice_lemma #a f s i (length s)
 
+(*| Concatenation preserves `FStar.Seq.Sorted.sorted_pred` when the last element
+    of `s1` is related by `f` to the first element of `s2` (if both are
+    non-empty). *)
 val sorted_pred_append_lemma :
   #a:eqtype ->
   f:tot_ord a ->

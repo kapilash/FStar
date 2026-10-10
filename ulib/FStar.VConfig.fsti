@@ -15,10 +15,14 @@
 *)
 module FStar.VConfig
 
-(** This type represents the set of verification-relevant options used
-    to check a particular definition. It can be read from tactics via
-    sigelt_opts and set via the check_with attribute.
- *)
+(*| The verification-relevant options used to check a particular definition.
+
+    Each field holds the value of the corresponding command-line option, such
+    as `initial_fuel`, `max_ifuel`, `z3rlimit`, `z3seed` or `no_smt`. Tactics
+    can read the configuration of a definition with
+    `FStar.Stubs.Reflection.V2.Builtins.sigelt_opts`, and the
+    `FStar.VConfig.check_with` attribute checks a definition with a given
+    configuration. Equality is decidable. *)
 type vconfig = {
   initial_fuel                              : int;
   max_fuel                                  : int;
@@ -45,6 +49,10 @@ type vconfig = {
   trivial_pre_for_unannotated_effectful_fns : bool;
 }
 
-(** Marker to check a sigelt with a particular vconfig *)
+(*| An attribute that checks the annotated definition with the given `FStar.VConfig.vconfig`.
+
+    It is usually produced by tactics, for example with
+    `FStar.Reflection.V2.Derived.add_check_with`. The function itself does
+    nothing and is `irreducible`. *)
 irreducible
 let check_with (vcfg : vconfig) : unit = ()

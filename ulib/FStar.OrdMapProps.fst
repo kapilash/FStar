@@ -17,6 +17,13 @@ module FStar.OrdMapProps
  
 open FStar.OrdMap
 
+(*| Folds `g` over the bindings of `m`, starting from the accumulator `a`: for
+    a non-empty map, `g k v a` is computed for the binding `(k, v)` returned by
+    `FStar.OrdMap.choose m`, and the fold continues on `remove k m` with that
+    result.
+
+    The order in which bindings are visited follows `FStar.OrdMap.choose`,
+    which the interface does not specify. *)
 val fold: #k:eqtype -> #v:Type -> #a:Type -> #f:cmp k -> (k -> v -> a -> Tot a)
           -> m:ordmap k v f -> a -> Tot a (decreases (size m))
 let rec fold #k #v #t #f g m a =

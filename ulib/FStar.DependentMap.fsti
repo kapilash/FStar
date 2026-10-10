@@ -36,40 +36,62 @@ module FStar.DependentMap
 ///
 /// The map also supports an extensional equality principle.
 
-(** Abstract type of dependent maps, with universe polymorphic values
-    and keys in universe 0 with decidable equality *)
+(*| Abstract type of dependent maps: total maps from keys to values whose type depends on the key.
+
+    `t key value` encapsulates a function `k:key -> value k`. Keys live in an
+    `eqtype` (universe 0, decidable equality); values may live in any
+    universe. Every key has a value, so `FStar.DependentMap.sel` never fails.
+    Maps are built with `FStar.DependentMap.create`, `FStar.DependentMap.upd`,
+    `FStar.DependentMap.restrict`, `FStar.DependentMap.concat`,
+    `FStar.DependentMap.rename` and `FStar.DependentMap.map`, and are
+    specified by the action of `sel` on each of them. Maps support
+    extensional equality, `FStar.DependentMap.equal`. The value type is
+    strictly positive, so `t` can appear in inductive type definitions.
+
+    ```fstar
+    let dv (b: bool) : Type0 = if b then int else string
+    let dm_init (b: bool) : dv b = if b then 0 else "zero"
+    let dm : FStar.DependentMap.t bool dv = FStar.DependentMap.create dm_init
+    let _ = assert (FStar.DependentMap.sel (FStar.DependentMap.upd dm true 1) true == 1)
+    ``` *)
 val t (key: eqtype) ([@@@strictly_positive] value: (key -> Type u#v)) : Type u#v
 
-(** Creating a new map from a function *)
+(*| Creates a map from a function giving the value at every key.
+
+    See `FStar.DependentMap.sel_create`. *)
 val create (#key: eqtype) (#value: (key -> Tot Type)) (f: (k: key -> Tot (value k)))
     : Tot (t key value)
 
-(** Querying the map for its value at a given key *)
+(*| Returns the value of a map at a key.
+
+    Total: every key has a value. *)
 val sel (#key: eqtype) (#value: (key -> Tot Type)) (m: t key value) (k: key) : Tot (value k)
 
-(** Relating [create] to [sel] *)
+(*| Selecting key `k` in `create f` gives `f k`.
+
+    Triggered automatically on `sel (create f) k`. *)
 val sel_create (#key: eqtype) (#value: (key -> Tot Type)) (f: (k: key -> Tot (value k))) (k: key)
     : Lemma (ensures (sel #key #value (create f) k == f k)) [SMTPat (sel #key #value (create f) k)]
 
-(** Updating a map at a point *)
+(*| Updates a map at one key, leaving the other keys unchanged.
+
+    See `FStar.DependentMap.sel_upd_same` and
+    `FStar.DependentMap.sel_upd_other`. *)
 val upd (#key: eqtype) (#value: (key -> Tot Type)) (m: t key value) (k: key) (v: value k)
     : Tot (t key value)
 
-(** The action of selecting a key [k] a map with an updated value [v]
-    at [k]
+(*| Selecting the updated key returns the new value: `sel (upd m k v) k == v`.
 
-    This is one of the classic McCarthy select/update axioms in the
-    setting of a dependent map.
-    *)
+    One of the McCarthy select/update axioms. Triggered automatically on
+    `sel (upd m k v) k`. *)
 val sel_upd_same (#key: eqtype) (#value: (key -> Tot Type)) (m: t key value) (k: key) (v: value k)
     : Lemma (ensures (sel (upd m k v) k == v)) [SMTPat (sel (upd m k v) k)]
 
-(** The action of selecting a key [k] a map with an updated value [v]
-    at a different key [k']
+(*| Selecting a key other than the updated one returns the old value.
 
-    This is one of the classic McCarthy select/update axioms in the
-    setting of a dependent map.
-    *)
+    Requires `k' <> k`; ensures `sel (upd m k v) k' == sel m k'`. One of the
+    McCarthy select/update axioms. Triggered automatically on
+    `sel (upd m k v) k'`. *)
 val sel_upd_other
       (#key: eqtype)
       (#value: (key -> Tot Type))
@@ -81,31 +103,47 @@ val sel_upd_other
       (ensures (sel (upd m k v) k' == sel m k'))
       [SMTPat (sel (upd m k v) k')]
 
-(** Extensional propositional equality on maps *)
+(*| Extensional equality of maps: same value at every key.
+
+    Introduced by `FStar.DependentMap.equal_intro` and eliminated into `==` by
+    `FStar.DependentMap.equal_elim`. *)
 val equal (#key: eqtype) (#value: (key -> Tot Type)) (m1 m2: t key value) : prop
 
-(** Introducing extensional equality by lifting equality on the map, pointwise *)
+(*| Two maps that agree on every key are `FStar.DependentMap.equal`.
+
+    Requires `forall k. sel m1 k == sel m2 k`. Triggered automatically on
+    `equal m1 m2`. *)
 val equal_intro (#key: eqtype) (#value: (key -> Tot Type)) (m1 m2: t key value)
     : Lemma (requires (forall k. sel m1 k == sel m2 k))
       (ensures (equal m1 m2))
       [SMTPat (equal m1 m2)]
 
-(** [equal] is reflexive *)
+(*| `FStar.DependentMap.equal` is reflexive.
+
+    Triggered automatically on `equal m m`. *)
 val equal_refl (#key: eqtype) (#value: (key -> Tot Type)) (m: t key value)
     : Lemma (ensures (equal m m)) [SMTPat (equal m m)]
 
-(** [equal] can be eliminated into standard propositional equality
-    (==), also proving that it is an equivalence relation *)
+(*| Extensionally equal maps are equal: `equal m1 m2` implies `m1 == m2`.
+
+    This also shows that `FStar.DependentMap.equal` is an equivalence
+    relation. Triggered automatically on `equal m1 m2`, so asserting
+    `equal m1 m2` is a convenient way to prove `m1 == m2`. *)
 val equal_elim (#key: eqtype) (#value: (key -> Tot Type)) (m1 m2: t key value)
     : Lemma (requires (equal m1 m2)) (ensures (m1 == m2)) [SMTPat (equal m1 m2)]
 
 (**** Restricting the domain of a map *)
 
-(** Restricts the domain of the map to those keys satisfying [p] *)
+(*| Restricts the domain of a map to the keys satisfying `p`.
+
+    The key type of the result is the refinement `k:key{p k}`; values are
+    unchanged (see `FStar.DependentMap.sel_restrict`). *)
 val restrict (#key: eqtype) (#value: (key -> Tot Type)) (p: (key -> prop)) (m: t key value)
     : Tot (t (k: key{p k}) value)
 
-(** The action of [sel] on [restrict] : the contents of the map isn't changed *)
+(*| Restriction does not change the value at a key that is kept: `sel (restrict p m) k == sel m k`.
+
+    Has no SMT pattern; call it explicitly. *)
 val sel_restrict
       (#key: eqtype)
       (#value: (key -> Tot Type))
@@ -123,7 +161,9 @@ val sel_restrict
 /// the component key spaces. The co-domain is the dependent product
 /// of the co-domains of the original map
 
-(** The key space of a concatenated map is the product of the key spaces *)
+(*| The value type of a concatenated map: `value1 k1` at `Inl k1` and `value2 k2` at `Inr k2`.
+
+    Used in the type of `FStar.DependentMap.concat`. *)
 let concat_value
       (#key1: eqtype)
       (value1: (key1 -> Tot Type))
@@ -135,7 +175,12 @@ let concat_value
   | Inl k1 -> value1 k1
   | Inr k2 -> value2 k2
 
-(** Concatenating maps *)
+(*| Combines two maps into one keyed by `either key1 key2`.
+
+    Keys `Inl k1` are looked up in the first map and keys `Inr k2` in the
+    second (see `FStar.DependentMap.sel_concat_l` and
+    `FStar.DependentMap.sel_concat_r`). The value type is
+    `FStar.DependentMap.concat_value`. *)
 val concat
       (#key1: eqtype)
       (#value1: (key1 -> Tot (Type u#v)))
@@ -145,8 +190,9 @@ val concat
       (m2: t key2 value2)
     : Tot (t (either key1 key2) (concat_value value1 value2))
 
-(** The action of [sel] on [concat], for a key on the left picks a
-    value from the left map *)
+(*| Selecting a left key in a concatenation reads the first map: `sel (concat m1 m2) (Inl k1) == sel m1 k1`.
+
+    Has no SMT pattern; call it explicitly. *)
 val sel_concat_l
       (#key1: eqtype)
       (#value1: (key1 -> Tot (Type u#v)))
@@ -157,8 +203,9 @@ val sel_concat_l
       (k1: key1)
     : Lemma (ensures (sel (concat m1 m2) (Inl k1) == sel m1 k1))
 
-(** The action of [sel] on [concat], for a key on the right picks a
-    value from the right map *)
+(*| Selecting a right key in a concatenation reads the second map: `sel (concat m1 m2) (Inr k2) == sel m2 k2`.
+
+    Has no SMT pattern; call it explicitly. *)
 val sel_concat_r
       (#key1: eqtype)
       (#value1: (key1 -> Tot Type))
@@ -174,8 +221,9 @@ val sel_concat_r
 /// Given a map from [key2] to [key1], we can revise a map from [t
 /// key1 v] to a map [t key2 v], by composing the maps.
 
-(** The type of the co-domain of the renamed map also involves
-    transformation along the renaming function *)
+(*| The value type of a renamed map: the value type of the original map at `ren k`.
+
+    Used in the type of `FStar.DependentMap.rename`. *)
 let rename_value
       (#key1: eqtype)
       (value1: (key1 -> Tot Type))
@@ -184,7 +232,10 @@ let rename_value
       (k: key2)
     : Tot Type = value1 (ren k)
 
-(** Renaming the keys of a map *)
+(*| Re-keys a map by precomposing it with a renaming function `ren` from new keys to old keys.
+
+    The value at a new key `k2` is the old value at `ren k2` (see
+    `FStar.DependentMap.sel_rename`). *)
 val rename
       (#key1: eqtype)
       (#value1: (key1 -> Tot Type))
@@ -193,7 +244,9 @@ val rename
       (ren: (key2 -> Tot key1))
     : Tot (t key2 (rename_value value1 ren))
 
-(** The action of [sel] on [rename] *)
+(*| Selecting in a renamed map reads the original map at the renamed key: `sel (rename m ren) k2 == sel m (ren k2)`.
+
+    Has no SMT pattern; call it explicitly. *)
 val sel_rename
       (#key1: eqtype)
       (#value1: (key1 -> Tot Type))
@@ -205,7 +258,10 @@ val sel_rename
 
 (**** Mapping a function over a dependent map *)
 
-(** [map f m] applies f to each value in [m]'s co-domain *)
+(*| Applies a dependent function `f` to every value of a map.
+
+    The value at key `k` becomes `f k (sel m k)` (see
+    `FStar.DependentMap.sel_map`). *)
 val map
       (#key: eqtype)
       (#value1 #value2: (key -> Tot Type))
@@ -213,7 +269,9 @@ val map
       (m: t key value1)
     : Tot (t key value2)
 
-(** The action of [sel] on [map] *)
+(*| Selecting in a mapped map applies the function: `sel (map f m) k == f k (sel m k)`.
+
+    Triggered automatically on `sel (map f m) k`. *)
 val sel_map
       (#key: eqtype)
       (#value1 #value2: (key -> Tot Type))
@@ -223,7 +281,9 @@ val sel_map
     : Lemma (ensures (sel (map f m) k == f k (sel m k)))
       [SMTPat (sel #key #value2 (map #key #value1 #value2 f m) k)]
 
-(** [map] explained in terms of its action on [upd] *)
+(*| Mapping commutes with update: `map f (upd m k v) == upd (map f m) k (f k v)`.
+
+    Triggered automatically on `map f (upd m k v)`. *)
 val map_upd
       (#key: eqtype)
       (#value1 #value2: (key -> Tot Type))

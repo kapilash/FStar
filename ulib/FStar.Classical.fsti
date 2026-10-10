@@ -25,25 +25,57 @@ module FStar.Classical
 
 (**** Implication *)
 
-(** Turning an [a ==> b] into a [a -> b]. *)
+(*| Turns a proof of the implication `a ==> b` into a function from proofs of
+    `a` to proofs of `b`.
+
+    The converse of `FStar.Classical.arrow_to_impl`. *)
 val impl_to_arrow (#a #b: prop) : (a ==> b) -> (a -> b)
 
-(** The converse of [impl_to_arrow] *)
+(*| Turns a function from proofs of `a` to proofs of `b` into a proof of the
+    implication `a ==> b`.
+
+    The converse of `FStar.Classical.impl_to_arrow`. For a function in the
+    `Lemma` effect, use `FStar.Classical.impl_intro`. *)
 val arrow_to_impl (#a #b: prop) : (a -> b) -> (a ==> b)
 
-(** Similar to [arrow_to_impl] *)
+(*| Proves the implication `p ==> q` from a function from proofs of `p` to
+    proofs of `q`.
+
+    Like `FStar.Classical.arrow_to_impl`, but the `$` argument must have
+    exactly the expected type, which helps infer `p` and `q`. For a function
+    in the `Lemma` effect, use `FStar.Classical.impl_intro`. *)
 val impl_intro_gtot (#p #q: prop) ($_: (p -> q)) : (p ==> q)
 
-(** Similar to [impl_intro_gtot], but for a Tot arrow *)
+(*| Proves the implication `p ==> q` from a total function from proofs of `p`
+    to proofs of `q`.
+
+    The same as `FStar.Classical.impl_intro_gtot`, for a function in the `Tot`
+    effect. *)
 val impl_intro_tot (#p #q: prop) ($_: (p -> q)) : (p ==> q)
 
-(** Similar to [arrow_to_impl], but with the Lemma effect. *)
+(*| Proves the implication `p ==> q` from a lemma that, given a proof of `p`,
+    ensures `q`.
+
+    To turn a lemma with a `requires` clause into an implication, use
+    `FStar.Classical.move_requires`. *)
 val impl_intro (#p #q: prop) ($_: (p -> Lemma q)) : Lemma (p ==> q)
 
-(** A lemma with a precondition can also be treated as a proof a quantified implication.
+(*| Turns a lemma with precondition `p x` and postcondition `q x` into one
+    with no precondition that ensures `p x ==> q x`.
 
-    See the remark at the top of this section comparing nested lemmas
-    with SMT pattern to [move_requires] and [forall_intro] *)
+    Useful for calling a lemma where its precondition may not hold, or for
+    passing it to `FStar.Classical.forall_intro`, which requires lemmas
+    without preconditions. Variants for 2 to 4 arguments are
+    `FStar.Classical.move_requires_2` to `FStar.Classical.move_requires_4`.
+
+    ```fstar
+    let pos_square (x: int)
+      : Lemma (requires x > 0) (ensures x * x > 0)
+      = ()
+
+    let square_if_pos (x: int) : Lemma (x > 0 ==> x * x > 0) =
+      FStar.Classical.move_requires pos_square x
+    ``` *)
 val move_requires
       (#a: Type)
       (#p #q: (a -> prop))
@@ -51,7 +83,8 @@ val move_requires
       (x: a)
     : Lemma (p x ==> q x)
 
-(** The arity 2 version of [move_requires] *)
+(*| `FStar.Classical.move_requires` for a lemma with 2 arguments: ensures
+    `p x y ==> q x y`. *)
 val move_requires_2
       (#a: Type)
       (#b: (a -> Type))
@@ -61,7 +94,8 @@ val move_requires_2
       (y: b x)
     : Lemma (p x y ==> q x y)
 
-(** The arity 3 version of [move_requires] *)
+(*| `FStar.Classical.move_requires` for a lemma with 3 arguments: ensures
+    `p x y z ==> q x y z`. *)
 val move_requires_3
       (#a: Type)
       (#b: (a -> Type))
@@ -73,7 +107,8 @@ val move_requires_3
       (z: c x y)
     : Lemma (p x y z ==> q x y z)
 
-(** The arity 4 version of [move_requires] *)
+(*| `FStar.Classical.move_requires` for a lemma with 4 arguments: ensures
+    `p x y z w ==> q x y z w`. *)
 val move_requires_4
       (#a: Type)
       (#b: (a -> Type))
@@ -87,9 +122,11 @@ val move_requires_4
       (w: d x y z)
     : Lemma (p x y z w ==> q x y z w)
 
-(** When proving predicate [q] whose well-formedness depends on the
-    predicate [p], it is convenient to have [q] appear only under a
-    context where [p] is know to be valid. *)
+(*| Proves `p ==> q ()` when the statement `q` is only well formed under the
+    assumption `p`.
+
+    `q` takes a proof of `p` as an argument, so it can mention terms whose
+    types need `p`. The lemma argument proves `q ()` given `p`. *)
 val impl_intro_gen (#p: prop) (#q: p -> prop) (_: (p -> Lemma (q ())))
     : Lemma (p ==> q ())
 
@@ -163,45 +200,72 @@ val impl_intro_gen (#p: prop) (#q: p -> prop) (_: (p -> Lemma (q ())))
 /// That said, there may still be cases where [forall_intro] etc. are
 /// more suitable.
 
-(** This introduces a proof of a universal quantifier. *)
+(*| Proves `forall x. p x` from a function that returns a proof of `p x` for
+    every `x`.
+
+    The result is the proof itself, a value of the quantified type. To get
+    the same fact as a `Lemma`, use `FStar.Classical.lemma_forall_intro_gtot`. *)
 val forall_intro_gtot (#a: Type) (#p: a -> prop) ($_: (x: a -> p x))
     : forall (x: a). p x
 
-(** This turns a dependent arrow into a proof-irrelevant postcondition
-    of a universal quantifier. *)
+(*| Proves `forall x. p x`, as a `Lemma`, from a function that returns a proof
+    of `p x` for every `x`.
+
+    `FStar.Classical.forall_intro_gtot` gives the same proof as a value. *)
 val lemma_forall_intro_gtot (#a: Type) (#p: a -> prop) ($_: (x: a -> p x))
     : Lemma (forall (x: a). p x)
 
-(** This turns a dependent arrow producing a proof of [p] into a lemma
-    ensuring [p]. *)
+(*| Turns a function returning a proof of `p x` into a lemma ensuring `p x`,
+    for the given `x`. *)
 val gtot_to_lemma (#a: Type) (#p: a -> prop) ($_: (x: a -> p x)) (x: a) : Lemma (p x)
 
-(** This is the analog of [lemma_forall_intro_gtot].
+(* TODO: perhaps remove this? *)
+(*| Proves `forall x. p x` from a function that returns a proof of `p x` for
+    every `x`.
 
-    TODO: perhaps remove this? *)
+    Has the same type as `FStar.Classical.forall_intro_gtot`, which is
+    preferable. *)
 val forall_intro_squash_gtot (#a: Type) (#p: a -> prop) ($_: (x: a -> p x))
     : forall (x: a). p x
 
-(** This is the analog of [lemma_forall_intro_gtot]. *)
+(*| Proves `forall x. p x` from a ghost function that returns a proof of
+    `p x` for every `x`.
+
+    Like `FStar.Classical.forall_intro_squash_gtot`, but the argument may be
+    ghost. *)
 val forall_intro_squash_gtot_join
       (#a: Type)
       (#p: a -> prop)
       ($_: (x: a -> GTot (p x)))
     : (forall (x: a). p x)
 
-(** The main workhorse for introducing universally quantified postconditions, at arity 1.
+(*| Proves `forall x. p x` from a lemma that ensures `p x` for any `x`.
 
-    See the remark at the start of this section for guidelines on its
-    use. You may prefer to use a local lemma with an SMT pattern. *)
+    The main way to establish a universally quantified postcondition. The
+    lemma must have no precondition; to use one with a `requires` clause,
+    first apply `FStar.Classical.move_requires`, or use
+    `FStar.Classical.ghost_lemma`. The quantifier gets no SMT pattern; for one,
+    use `FStar.Classical.forall_intro_with_pat`. Variants for 2 to 4 bound
+    variables are `FStar.Classical.forall_intro_2` to
+    `FStar.Classical.forall_intro_4`.
+
+    A local lemma with an SMT pattern is often a more robust alternative: it
+    supports preconditions, any number of variables, and any patterns.
+
+    ```fstar
+    let double_nonneg (x: nat) : Lemma (x + x >= 0) = ()
+
+    let all_doubles_nonneg () : Lemma (forall (x: nat). x + x >= 0) =
+      FStar.Classical.forall_intro double_nonneg
+    ``` *)
 val forall_intro (#a: Type) (#p: (a -> prop)) ($_: (x: a -> Lemma (p x)))
     : Lemma (forall (x: a). p x)
 
-(** The main workhorse for introducing universally quantified
-    postconditions, at arity 1, including a provision for a single
-    pattern.
+(*| Proves `forall x. p x` from a lemma that ensures `p x` for any `x`, with
+    `pat x` as the quantifier's SMT pattern.
 
-    See the remark at the start of this section for guidelines on its
-    use. You may prefer to use a local lemma with an SMT pattern. *)
+    Supports a single pattern only, not conjunctive or disjunctive patterns.
+    Otherwise the same as `FStar.Classical.forall_intro`. *)
 val forall_intro_with_pat
       (#a: Type)
       (#c: (x: a -> Type))
@@ -210,21 +274,18 @@ val forall_intro_with_pat
       ($_: (x: a -> Lemma (p x)))
     : Lemma (forall (x: a). {:pattern (pat x)} p x)
 
-(** This function is almost identical to [forall_intro]. The only
-    difference is that rather in [forall_intro f] the type of [f] is
-    _unified_ with expected type of that argument, leading to better
-    resolution of implicit variables.
+(*| Proves `forall x. p x` from a lemma that ensures `p x` for any `x`,
+    allowing subtyping on the lemma's type.
 
-    However, sometimes it is convenient to introduce a quantifier from
-    a lemma while relying on subtyping---[forall_intro_sub f] allows
-    the use of subtyping when comparing the type of [f] to the
-    expected type of the argument. This will likely mean that the
-    implicit arguments, notably [p], will have to be provided
-    explicilty. *)
+    `FStar.Classical.forall_intro` requires the lemma's type to unify with the
+    expected type, which helps infer `p`. This variant checks it by subtyping
+    instead, so `p` and other implicit arguments usually have to be given
+    explicitly. *)
 val forall_intro_sub (#a: Type) (#p: (a -> prop)) (_: (x: a -> Lemma (p x)))
     : Lemma (forall (x: a). p x)
 
-(** The arity 2 version of [forall_intro] *)
+(*| `FStar.Classical.forall_intro` for two bound variables: proves
+    `forall x y. p x y` from a lemma ensuring `p x y`. *)
 val forall_intro_2
       (#a: Type)
       (#b: (a -> Type))
@@ -232,7 +293,8 @@ val forall_intro_2
       ($_: (x: a -> y: b x -> Lemma (p x y)))
     : Lemma (forall (x: a) (y: b x). p x y)
 
-(** The arity 2 version of [forall_intro_with_pat] *)
+(*| `FStar.Classical.forall_intro_with_pat` for two bound variables: proves
+    `forall x y. p x y` with `pat x y` as the SMT pattern. *)
 val forall_intro_2_with_pat
       (#a: Type)
       (#b: (a -> Type))
@@ -242,7 +304,8 @@ val forall_intro_2_with_pat
       ($_: (x: a -> y: b x -> Lemma (p x y)))
     : Lemma (forall (x: a) (y: b x). {:pattern (pat x y)} p x y)
 
-(** The arity 3 version of [forall_intro] *)
+(*| `FStar.Classical.forall_intro` for three bound variables: proves
+    `forall x y z. p x y z` from a lemma ensuring `p x y z`. *)
 val forall_intro_3
       (#a: Type)
       (#b: (a -> Type))
@@ -251,7 +314,8 @@ val forall_intro_3
       ($_: (x: a -> y: b x -> z: c x y -> Lemma (p x y z)))
     : Lemma (forall (x: a) (y: b x) (z: c x y). p x y z)
 
-(** The arity 3 version of [forall_intro_with_pat] *)
+(*| `FStar.Classical.forall_intro_with_pat` for three bound variables: proves
+    `forall x y z. p x y z` with `pat x y z` as the SMT pattern. *)
 val forall_intro_3_with_pat
       (#a: Type)
       (#b: (a -> Type))
@@ -262,7 +326,8 @@ val forall_intro_3_with_pat
       ($_: (x: a -> y: b x -> z: c x y -> Lemma (p x y z)))
     : Lemma (forall (x: a) (y: b x) (z: c x y). {:pattern (pat x y z)} p x y z)
 
-(** The arity 4 version of [forall_intro] *)
+(*| `FStar.Classical.forall_intro` for four bound variables: proves
+    `forall x y z w. p x y z w` from a lemma ensuring `p x y z w`. *)
 val forall_intro_4
       (#a: Type)
       (#b: (a -> Type))
@@ -272,19 +337,23 @@ val forall_intro_4
       ($_: (x: a -> y: b x -> z: c x y -> w: d x y z -> Lemma (p x y z w)))
     : Lemma (forall (x: a) (y: b x) (z: c x y) (w: d x y z). p x y z w)
 
-(** This combines th use of [arrow_to_impl] with [forall_intro].
+(* TODO: Seems overly specific; could be removed? *)
+(*| Proves `forall x. p x ==> q x` from a lemma that, given `x` and a proof of
+    `p x`, ensures `q x`.
 
-    TODO: Seems overly specific; could be removed?  *)
+    Combines `FStar.Classical.arrow_to_impl` with
+    `FStar.Classical.forall_intro`. *)
 val forall_impl_intro
       (#a: Type)
       (#p #q: (a -> prop))
       ($_: (x: a -> p x -> Lemma (q x)))
     : Lemma (forall x. p x ==> q x)
 
-(** This is similar to [forall_intro], but with a lemma that has a precondition.
+(* Note: It's unclear why [q] has an additional [unit] argument. *)
+(*| Proves `forall x. p x ==> q x ()` from a lemma with precondition `p x` and
+    postcondition `q x ()`.
 
-    Note: It's unclear why [q] has an additional [unit] argument.
-  *)
+    Like `FStar.Classical.forall_intro`, but for a lemma with a precondition. *)
 val ghost_lemma
       (#a: Type)
       (#p: (a -> prop))
@@ -295,37 +364,31 @@ val ghost_lemma
 
 (**** Existential quantification *)
 
-(** The most basic way to introduce an existential quantifier
-    [exists x. p x] is to present a witness [w] such that [p w].
+(*| Proves `exists x. p x` from a witness `witness` for which `p witness`
+    holds.
 
-    While [exists_intro] is very explicit, as with universal
-    quantification and [forall_intro], it is only available for a
-    fixed arity.
-
-    However, unlike with we do not yet provide any conveniences for
-    higher arities. One workaround is to tuple witnesses together,
-    e.g., instead of proving [exists x y. p x y] to prove instead
-    [exists xy. p (fst xy) (snd xy)] and to allow the SMT solver to convert
-    the latter to the former. *)
+    There are no variants for several bound variables. To prove
+    `exists x y. p x y`, one can prove `exists xy. p (fst xy) (snd xy)` with a
+    pair as the witness and let the SMT solver convert it. *)
 val exists_intro (#a: Type) (p: (a -> prop)) (witness: a)
     : Lemma (requires (p witness)) (ensures (exists (x: a). p x))
 
-(** Introducing an exists via its classical correspondence with a negated universal quantifier *)
+(*| Proves `exists x. p x` classically: from a proof that `~(p x)` for every
+    `x` would lead to a contradiction. *)
 val exists_intro_not_all_not
       (#a: Type)
       (#p: (a -> prop))
       ($f: ((x: a -> Lemma (~(p x))) -> Lemma False))
     : Lemma (exists x. p x)
 
-(** If [r] is true for all [x:a{p x}], then one can use
-    [forall_to_exists] to establish [(exists x. p x) ==> r]. *)
+(*| Proves `(exists x. p x) ==> r` from a lemma that ensures `p x ==> r` for
+    every `x`. *)
 val forall_to_exists (#a: Type) (#p: (a -> prop)) (#r: prop) ($_: (x: a -> Lemma (p x ==> r)))
     : Lemma ((exists (x: a). p x) ==> r)
 
-(** The arity two variant of [forall_to_exists] for two separate
-    existentially quantified hypotheses.
-
-    TODO: overly specific, remove? *)
+(* TODO: overly specific, remove? *)
+(*| `FStar.Classical.forall_to_exists` for two independent existential
+    hypotheses: proves `((exists x. p x) /\ (exists y. q y)) ==> r`. *)
 val forall_to_exists_2
       (#a: Type)
       (#p: (a -> prop))
@@ -335,9 +398,8 @@ val forall_to_exists_2
       ($f: (x: a -> y: b -> Lemma ((p x /\ q y) ==> r)))
     : Lemma (((exists (x: a). p x) /\ (exists (y: b). q y)) ==> r)
 
-(** An eliminator for existentials: If every witness can be
-    eliminated into a proof of the [goal], then the [goal]
-    postcondition is valid. *)
+(*| Eliminates an existential: proves `goal` from a proof of `exists x. p x`
+    and a function that proves `goal` from any `x` with `p x`. *)
 val exists_elim
       (goal: prop) (#a: Type)
       (#p: (a -> prop))
@@ -348,8 +410,11 @@ val exists_elim
 
 (*** Disjunction *)
 
-(** Eliminating [l \/ r] into a [goal] whose well-formedness depends on
-    [l \/ r] *)
+(*| Eliminates a disjunction: proves `(l \/ r) ==> goal ()` from lemmas
+    proving `goal ()` assuming `l` and assuming `r`.
+
+    `goal` takes a proof of `l \/ r` as an argument, so its well-formedness may
+    depend on the disjunction. *)
 val or_elim
       (#l #r: prop)
       (#goal: ((l \/ r) -> prop))
@@ -357,5 +422,5 @@ val or_elim
       (hr: (r -> Lemma (goal ())))
     : Lemma ((l \/ r) ==> goal ())
 
-(** The law of excluded middle. *)
+(*| The law of excluded middle: `p \/ ~p` holds for any proposition `p`. *)
 val excluded_middle (p: prop) : Lemma (ensures (p \/ ~p))

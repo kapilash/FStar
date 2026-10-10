@@ -23,12 +23,17 @@ open FStar.Stubs.Reflection.V2.Builtins
 open FStar.Tactics.Effect
 open FStar.Tactics.Util
 
+(*| Applies `f` to the sort (type) of a binder, leaving its name, qualifier and attributes unchanged.
+
+    Uses the reflection views `FStar.Stubs.Reflection.V2.Builtins.inspect_binder`
+    and `pack_binder`. See also `FStar.Tactics.Visit.on_sort_simple_binder`. *)
 let on_sort_binder (f : term -> Tac term) (b:binder) : Tac binder =
   let bview = inspect_binder b in
   let bview = { bview with sort = f bview.sort } in
   pack_binder bview
 
 (* Same *)
+(*| Like `FStar.Tactics.Visit.on_sort_binder`, for a simple binder; the result is again a simple binder. *)
 let on_sort_simple_binder (f : term -> Tac term) (b:simple_binder) : Tac simple_binder =
   let bview = inspect_binder b in
   let bview = { bview with sort = f bview.sort } in

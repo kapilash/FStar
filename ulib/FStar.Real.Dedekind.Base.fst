@@ -45,17 +45,25 @@ module ID = FStar.IndefiniteDescription
 
 (**** Sets of rationals *)
 
+(*| Sets of rationals, as restricted predicates `Q.rat -> prop`.
+
+    Being restricted (see `FStar.FunctionalExtensionality`), two sets with the same members are equal: `FStar.Real.Dedekind.Base.qset_ext`. Build them with `FStar.Real.Dedekind.Base.mk`. *)
 let qset = F.restricted_t Q.rat (fun _ -> prop)
 
 #push-options "--using_facts_from '*'"
+(*| The set of rationals satisfying `p`, restricted to the domain `Q.rat`.
+
+    Membership is `FStar.Real.Dedekind.Base.mk_mem`. *)
 let mk (p:Q.rat -> prop) : qset = F.on_dom Q.rat p
 
+(*| Membership in `mk p`: `mk p q` iff `p q`. *)
 let mk_mem (p:Q.rat -> prop) (q:Q.rat)
   : Lemma (mk p q <==> p q)
   = ()
 
-/// Extensionality of sets of rationals: the one place where functional and
-/// propositional extensionality are used.
+(*| Extensionality for sets of rationals: two `qset`s with the same members are equal.
+
+    This is the one place where functional and propositional extensionality are used. For cuts, see `FStar.Real.Dedekind.Base.ext`. *)
 let qset_ext (x y:qset)
   : Lemma (requires forall (q:Q.rat). x q <==> y q) (ensures x == y)
   = PE.predicateExtensionality Q.rat x y;
@@ -65,8 +73,6 @@ let qset_ext (x y:qset)
 
 (**** Cuts *)
 
-/// The "no greatest element" clause, packaged as an opaque predicate.
-///
 /// Kept opaque for the reason described at the top of the file, and *also*
 /// because the expected postcondition of a definition is pushed into its body:
 /// were this clause the transparent conclusion of a lemma, that lemma would be
@@ -75,10 +81,17 @@ let qset_ext (x y:qset)
 /// [no_greatest_intro], which introduces the [forall] by [Classical.forall_intro]
 /// -- so the body's type *is* the postcondition and no SMT goal is raised --
 /// and does so with [p] abstract, where the quantifier has nothing to chain on.
+
+(*| The predicate `p` has no greatest element: every `a` with `p a` has some `b` with `p b` and `Q.lt a b`.
+
+    Opaque to SMT, to avoid matching loops. Establish it with `FStar.Real.Dedekind.Base.no_greatest_intro`; for a cut, use `FStar.Real.Dedekind.Base.cut_above`. *)
 [@@"opaque_to_smt"]
 let no_greatest (p:Q.rat -> prop) : prop =
   forall (a:Q.rat). p a ==> (exists (b:Q.rat). p b /\ Q.lt a b)
 
+(*| Proves `no_greatest p` from a lemma that, for any `a` with `p a`, gives some `b` with `p b` and `Q.lt a b`.
+
+    The only way to establish the opaque `FStar.Real.Dedekind.Base.no_greatest`. *)
 let no_greatest_intro (p:Q.rat -> prop)
     (f: (a:Q.rat -> Lemma (requires p a)
                          (ensures exists (b:Q.rat). p b /\ Q.lt a b)))
@@ -93,6 +106,9 @@ let no_greatest_intro (p:Q.rat -> prop)
          #(fun (a:Q.rat) -> exists (b:Q.rat). p b /\ Q.lt a b)
          f)
 
+(*| A Dedekind cut: a set of rationals that is nonempty, not all of the rationals, downward closed and without a greatest element.
+
+    The cut represents the real number of which it is the set of strictly smaller rationals. Opaque to SMT; use `FStar.Real.Dedekind.Base.mk_cut` to build cuts and the accessors `FStar.Real.Dedekind.Base.cut_mem`, `FStar.Real.Dedekind.Base.cut_nonmem`, `FStar.Real.Dedekind.Base.cut_down` and `FStar.Real.Dedekind.Base.cut_above` to use the four conditions. *)
 [@@"opaque_to_smt"]
 let is_cut (c:qset) : prop =
   (exists (q:Q.rat). c q) /\
@@ -100,13 +116,19 @@ let is_cut (c:qset) : prop =
   (forall (a b:Q.rat). (c b /\ Q.lt a b) ==> c a) /\
   no_greatest c
 
+(*| Dedekind cuts of the rationals, the representation of `FStar.Real.Dedekind.real`.
+
+    A `qset` satisfying `FStar.Real.Dedekind.Base.is_cut`. Cuts with the same members are equal (`FStar.Real.Dedekind.Base.ext`). *)
 let cut = c:qset{is_cut c}
 
+(*| Extensionality for cuts: two cuts with the same members are equal. *)
 let ext (x y:cut)
   : Lemma (requires forall (q:Q.rat). x q <==> y q) (ensures x == y)
   = qset_ext x y
 
-/// To build a cut it suffices to check the four conditions pointwise.
+(*| Builds a cut from a predicate on rationals, given the four cut conditions as preconditions.
+
+    The conditions are: some rational satisfies `p`, some does not, `p` is downward closed, and `no_greatest p` (establish it with `FStar.Real.Dedekind.Base.no_greatest_intro`). The resulting cut has exactly the members satisfying `p`. *)
 let mk_cut (p:Q.rat -> prop)
   : Pure cut
       (requires (exists (q:Q.rat). p q) /\
@@ -120,22 +142,22 @@ let mk_cut (p:Q.rat -> prop)
 
 (**** The four accessors *)
 
-/// A cut is nonempty.
+(*| Some member of a cut, chosen classically; witnesses that a cut is nonempty. *)
 let cut_mem (c:cut) : Ghost Q.rat (requires True) (ensures fun q -> c q)
   = reveal_opaque (`%is_cut) is_cut;
     ID.indefinite_description_ghost Q.rat (fun q -> c q)
 
-/// A cut is not everything.
+(*| Some rational outside a cut, chosen classically; witnesses that a cut is not all of the rationals. *)
 let cut_nonmem (c:cut) : Ghost Q.rat (requires True) (ensures fun q -> ~(c q))
   = reveal_opaque (`%is_cut) is_cut;
     ID.indefinite_description_ghost Q.rat (fun q -> ~(c q))
 
-/// A cut is downward closed.
+(*| A cut is downward closed: if `b` is in the cut and `Q.lt a b`, then `a` is in the cut. *)
 let cut_down (c:cut) (a b:Q.rat)
   : Lemma (requires c b /\ Q.lt a b) (ensures c a)
   = reveal_opaque (`%is_cut) is_cut
 
-/// A cut has no greatest element.
+(*| Given a member `a` of a cut, a strictly greater member, chosen classically; witnesses that a cut has no greatest element. *)
 let cut_above (c:cut) (a:Q.rat)
   : Ghost Q.rat (requires c a) (ensures fun b -> c b /\ Q.lt a b)
   = reveal_opaque (`%is_cut) is_cut;
@@ -144,40 +166,53 @@ let cut_above (c:cut) (a:Q.rat)
 
 (**** Elementary consequences *)
 
-/// A non-member dominates every member.
+(*| Every member of a cut is strictly below every non-member. *)
 let mem_lt_nonmem (c:cut) (a b:Q.rat)
   : Lemma (requires c a /\ ~(c b)) (ensures Q.lt a b)
   = Q.lt_total a b;
     if Q.lt b a then cut_down c b a
 
-/// Anything above a non-member is a non-member.
+(*| Any rational above a non-member of a cut is also a non-member. *)
 let above_nonmem (c:cut) (a b:Q.rat)
   : Lemma (requires ~(c a) /\ Q.lt a b) (ensures ~(c b))
   = introduce c b ==> False with cut_down c a b
 
 (**** Order *)
 
+(*| Non-strict order on cuts: inclusion, every member of `x` is a member of `y`.
+
+    A total order (`FStar.Real.Dedekind.Base.cle_total`). *)
 let cle (x y:cut) : prop = forall (q:Q.rat). x q ==> y q
+(*| Strict order on cuts: `cle x y` and `x =!= y`.
+
+    See `FStar.Real.Dedekind.Base.clt_witness` for a rational separating them. *)
 let clt (x y:cut) : prop = cle x y /\ x =!= y
 
+(*| `cle` is reflexive. *)
 let cle_refl (x:cut) : Lemma (cle x x) = ()
 
+(*| `cle` is antisymmetric: `cle x y` and `cle y x` give `x == y`. *)
 let cle_antisym (x y:cut)
   : Lemma (requires cle x y /\ cle y x) (ensures x == y)
   = ext x y
 
+(*| `cle` is transitive. *)
 let cle_trans (x y z:cut)
   : Lemma (requires cle x y /\ cle y z) (ensures cle x z)
   = ()
 
+(*| `clt` is irreflexive: `clt x x` is false. *)
 let clt_irrefl (x:cut) : Lemma (~(clt x x)) = ()
 
+(*| `clt` is transitive. *)
 let clt_trans (x y z:cut)
   : Lemma (requires clt x y /\ clt y z) (ensures clt x z)
   = cle_trans x y z;
     introduce x == z ==> False with cle_antisym y z
 
-/// Totality of the order. This is where downward closure pays off.
+(*| The order `cle` on cuts is total: `cle x y` or `cle y x`.
+
+    Proved classically, using downward closure. *)
 let cle_total (x y:cut)
   : Lemma (cle x y \/ cle y x)
   = if ID.strong_excluded_middle (cle x y) then ()
@@ -193,21 +228,26 @@ let cle_total (x y:cut)
       end
     end
 
+(*| Trichotomy for cuts: `clt x y`, `x == y` or `clt y x`. *)
 let clt_total (x y:cut)
   : Lemma (clt x y \/ x == y \/ clt y x)
   = cle_total x y
 
+(*| A rational in `y` but not in `x` shows `clt x y`. *)
 let clt_of_witness (x y:cut) (q:Q.rat)
   : Lemma (requires y q /\ ~(x q)) (ensures clt x y)
   = cle_total x y
 
+(*| If `clt x y`, some rational is in `y` but not in `x`.
+
+    See `FStar.Real.Dedekind.Base.clt_witness` for a ghost function returning one. *)
 let clt_exists (x y:cut)
   : Lemma (requires clt x y) (ensures exists (q:Q.rat). y q /\ ~(x q))
   = if ID.strong_excluded_middle (exists (q:Q.rat). y q /\ ~(x q))
     then ()
     else cle_antisym x y
 
-/// [x < y] is witnessed by a rational in [y] but not in [x].
+(*| A rational in `y` but not in `x`, chosen classically, when `clt x y`. *)
 let clt_witness (x y:cut)
   : Ghost Q.rat (requires clt x y) (ensures fun q -> y q /\ ~(x q))
   = clt_exists x y;
@@ -219,36 +259,47 @@ let clt_witness (x y:cut)
 /// Proving them in a single goal, or naming the predicate with a local
 /// [let p : Q.rat -> prop = ...], is dramatically slower.
 
+(*| Some rational is strictly below `r`: the cut of `r` is nonempty. *)
 let rat_ne (r:Q.rat) : Lemma (exists (q:Q.rat). Q.lt q r)
   = introduce exists (q:Q.rat). Q.lt q r with (Q.below r) and ()
 
+(*| Some rational is not strictly below `r` (for instance `r`): the cut of `r` is not all of the rationals. *)
 let rat_nf (r:Q.rat) : Lemma (exists (q:Q.rat). ~(Q.lt q r))
   = Q.lt_irrefl r;
     introduce exists (q:Q.rat). ~(Q.lt q r) with r and ()
 
+(*| The set of rationals strictly below `r` is downward closed. *)
 let rat_dc (r:Q.rat)
   : Lemma (forall (a b:Q.rat). (Q.lt b r /\ Q.lt a b) ==> Q.lt a r)
   = introduce forall (a b:Q.rat). (Q.lt b r /\ Q.lt a b) ==> Q.lt a r
     with introduce _ ==> _ with Q.lt_trans a b r
 
-/// The "no greatest element" clause, for one [a].
+(*| For `Q.lt a r`, some rational lies strictly between `a` and `r` (namely `Q.mid a r`).
+
+    A helper for `FStar.Real.Dedekind.Base.rat_op`. *)
 let rat_op_aux (a r:Q.rat)
   : Lemma (requires Q.lt a r)
           (ensures exists (b:Q.rat). Q.lt b r /\ Q.lt a b)
   = introduce exists (b:Q.rat). Q.lt b r /\ Q.lt a b
     with (Q.mid a r) and (Q.mid_spec a r)
 
+(*| The set of rationals strictly below `r` has no greatest element. *)
 let rat_op (r:Q.rat) : Lemma (no_greatest (fun q -> b2t (Q.lt q r)))
   = no_greatest_intro (fun q -> b2t (Q.lt q r)) (fun a -> rat_op_aux a r)
 
+(*| The cut of rationals strictly below `r`, which represents `r` as a real.
+
+    This is the embedding `FStar.Real.Dedekind.of_rat`. Membership is `FStar.Real.Dedekind.Base.rat_cut_mem`. *)
 let rat_cut (r:Q.rat) : cut =
   rat_ne r; rat_nf r; rat_dc r; rat_op r;
   mk_cut (fun q -> b2t (Q.lt q r))
 
+(*| Membership in `rat_cut r`: `rat_cut r q` iff `Q.lt q r`. *)
 let rat_cut_mem (r q:Q.rat)
   : Lemma (rat_cut r q <==> Q.lt q r)
   = ()
 
+(*| `rat_cut` is injective: `rat_cut r == rat_cut s` iff `r == s`. *)
 let rat_cut_inj (r s:Q.rat)
   : Lemma (rat_cut r == rat_cut s <==> r == s)
   = introduce rat_cut r == rat_cut s ==> r == s
@@ -264,11 +315,13 @@ let rat_cut_inj (r s:Q.rat)
       Q.lt_total r s
     end
 
+(*| `rat_cut` is monotone: `Q.lt r s` gives `cle (rat_cut r) (rat_cut s)`. *)
 let rat_cut_le (r s:Q.rat)
   : Lemma (requires Q.lt r s) (ensures cle (rat_cut r) (rat_cut s))
   = introduce forall (q:Q.rat). rat_cut r q ==> rat_cut s q
     with introduce _ ==> _ with Q.lt_trans q r s
 
+(*| `rat_cut` preserves and reflects the strict order: `clt (rat_cut r) (rat_cut s)` iff `Q.lt r s`. *)
 let rat_cut_lt (r s:Q.rat)
   : Lemma (clt (rat_cut r) (rat_cut s) <==> Q.lt r s)
   = rat_cut_inj r s;
@@ -288,14 +341,17 @@ let rat_cut_lt (r s:Q.rat)
 
 (**** Approximating a cut by a rational interval *)
 
-/// [addn a eps n] is [a + n * eps], defined by iteration so that the
-/// search below is structurally recursive.
+(*| `addn a eps n` is `a + n * eps`, defined by iterating `n` additions of `eps`.
+
+    The iteration makes the search in `FStar.Real.Dedekind.Base.approx_aux` structurally recursive. `FStar.Real.Dedekind.Base.addn_spec` gives the closed form. *)
 let rec addn (a eps:Q.rat) (n:nat) : Tot Q.rat (decreases n) =
   if n = 0 then a else addn (Q.add a eps) eps (n - 1)
 
+(*| Rearrangement of rational sums: `Q.add (Q.add x y) z == Q.add x (Q.add z y)`. *)
 let ac1 (x y z:Q.rat) : Lemma (Q.add (Q.add x y) z == Q.add x (Q.add z y))
   = Q.add_assoc x y z; Q.add_comm y z
 
+(*| `(m + 1) * eps == m * eps + eps` for rationals, with `m` embedded by `Q.of_int`. *)
 let scale_succ (m:nat) (eps:Q.rat)
   : Lemma (Q.mul (Q.of_int (m + 1)) eps ==
            Q.add (Q.mul (Q.of_int m) eps) eps)
@@ -306,10 +362,12 @@ let scale_succ (m:nat) (eps:Q.rat)
     Q.mul_comm eps Q.one;
     Q.mul_one eps
 
+(*| `0 * eps == 0` for rationals. *)
 let scale_zero (eps:Q.rat) : Lemma (Q.mul (Q.of_int 0) eps == Q.zero)
   = Q.mul_comm (Q.of_int 0) eps; Q.mul_zero eps
 
 #push-options "--fuel 1"
+(*| Closed form of `addn`: `addn a eps n == Q.add a (Q.mul (Q.of_int n) eps)`. *)
 let rec addn_spec (a eps:Q.rat) (n:nat)
   : Lemma (ensures addn a eps n == Q.add a (Q.mul (Q.of_int n) eps))
           (decreases n)
@@ -322,7 +380,9 @@ let rec addn_spec (a eps:Q.rat) (n:nat)
 
 #pop-options
 
-/// [a + n * eps] eventually exceeds any given rational.
+(*| For positive `eps`, `addn a eps n` eventually exceeds any rational `b`.
+
+    An Archimedean argument, from `FStar.Rational.archimedean`. *)
 let addn_unbounded (a eps b:Q.rat)
   : Lemma (requires Q.lt Q.zero eps)
           (ensures exists (n:nat). Q.lt b (addn a eps n))
@@ -350,9 +410,10 @@ let addn_unbounded (a eps b:Q.rat)
       introduce exists (n:nat). Q.lt b (addn a eps n) with n and ()
     end
 
-/// The search: walking up from a member in steps of [eps], we must leave the
-/// cut, and the step at which we do gives the desired pair.
 #push-options "--fuel 1"
+(*| The search behind `FStar.Real.Dedekind.Base.approx`: walking up from a member `a` in steps of `eps`, returns the member `x` at which the walk leaves the cut, so that `Q.add x eps` is outside it.
+
+    Requires that `addn a eps n` is already outside the cut; recursion is on `n`. *)
 let rec approx_aux (c:cut) (a eps:Q.rat) (n:nat)
   : Ghost (Q.rat & Q.rat)
       (requires Q.lt Q.zero eps /\ c a /\ ~(c (addn a eps n)))
@@ -365,10 +426,9 @@ let rec approx_aux (c:cut) (a eps:Q.rat) (n:nat)
 
 #pop-options
 
-/// **Approximation lemma.** However fine a rational tolerance [eps] we are
-/// given, a cut is straddled by two rationals exactly [eps] apart: one inside
-/// and one outside. This is what makes [add_opp] and multiplication of cuts
-/// provable.
+(*| Approximation lemma: for every positive rational `eps`, returns rationals `x` and `y = Q.add x eps` with `x` in the cut and `y` outside it.
+
+    However fine the tolerance, a cut is straddled by two rationals exactly `eps` apart. Ghost, as the pair is found classically. This is what makes the additive inverse law and the multiplication of cuts provable. *)
 let approx (c:cut) (eps:Q.rat)
   : Ghost (Q.rat & Q.rat)
       (requires Q.lt Q.zero eps)

@@ -15,33 +15,44 @@
 *)
 module FStar.Range
 
-(** [range] is the type for the internal representation of source ranges.
-   Internally, it includes a "definition" range and a "use" range, each of which
-   has a filename, a start position (line+col), and an end position.
+(*| The type of source ranges, as used by the compiler for error locations.
 
-   We do not fully expose this type, but [explode] below allows inspecting it,
-   and [mk_range] to construct it. This type is realized in the compiler as
-   [FStarC.Range.Type.range], so that ranges are the same type everywhere.
+    A range includes a definition range and a use range, each with a file name,
+    a start position and an end position (line and column). The type is
+    abstract here, but it has decidable equality; construct values with
+    `FStar.Range.mk_range` and inspect them with `FStar.Range.explode`. It is
+    realized by the compiler's own range type, so ranges are the same type in
+    user code, tactics and the compiler.
 
-   Note: [range] used to be a *sealed* type, which made all its values provably
-   equal and hence made total range-inspecting functions (like [range_of]) sound.
-   It is no longer sealed, so ranges now carry observable metadata. *)
-
+    `range` used to be sealed, which made all ranges provably equal; it no
+    longer is, so ranges carry observable data. *)
 val range : eqtype
 
-(** A dummy range constant *)
+(*| A dummy range, for use when no source location is available. An assumed constant. *)
 val range_0 : range
 
-(** Building a range constant *)
+(*| Builds a range from a file name, a start line and column, and an end line and column.
+
+    An assumed primitive that reduces in the normalizer. *)
 val mk_range (file: string) (from_line from_col to_line to_col: int) : Tot range
 (* Retained as a primop, since the extra indirection would break the custom
 error messages in QuickCode. (Guido 30/Aug/2024) *)
 
+(*| Joins two ranges into a single range spanning both, for reporting a location that covers several terms.
+
+    An assumed primitive that reduces in the normalizer; the interface states no
+    property of the result. *)
 val join_range (r1 r2 : range) : Tot range
 
-(** [labeled] is used internally to the SMT encoding to associate a
-    source-code location with an assertion. *)
+(*| Labels a proposition with a source range and a message; logically, `labeled r msg b` is just `b`.
+
+    Used internally by the SMT encoding to report which assertion failed. It is
+    `irreducible`. *)
 irreducible
 let labeled (r : range) (msg: string) (b: prop) : prop = b
 
+(*| Returns the file name, start line, start column, end line and end column of a range.
+
+    An assumed primitive that reduces in the normalizer; no lemma relates it
+    to `FStar.Range.mk_range`. *)
 val explode (r : range) : Tot (string & int & int & int & int)

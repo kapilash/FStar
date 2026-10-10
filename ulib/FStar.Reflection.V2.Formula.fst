@@ -49,12 +49,40 @@ private let rec collect_app' (args : list argv) (t : term)
 private let collect_app = collect_app' []
 /////
 
+(*| The comparison relations recognized by
+    `FStar.Reflection.V2.Formula.term_as_formula`.
+
+    - `Eq ty` is propositional equality `==` (`Prims.eq2`), with its type if given
+    - `BoolEq ty` is boolean equality `=`, with its type if given
+    - `Lt`, `Le`, `Gt` and `Ge` are the orderings `<`, `<=`, `>` and `>=` *)
 [@@plugin]
 noeq type comparison =
   | Eq     of option typ  (* Propositional equality (eq2), maybe annotated *)
   | BoolEq of option typ  (* Decidable, boolean equality (eq), maybe annotated *)
   | Lt | Le | Gt | Ge     (* Orderings, at type `int` (and subtypes) *)
 
+(*| A shallow view of a proposition by its top-level logical connective, as
+    computed by `FStar.Reflection.V2.Formula.term_as_formula`.
+
+    The arguments are terms, not formulas: only the outermost connective is
+    classified; to look deeper, apply
+    `FStar.Reflection.V2.Formula.term_as_formula'` to the arguments. The
+    constructors are:
+
+    - `True_` and `False_`, the propositions `l_True` and `l_False`
+    - `Comp c l r`, a comparison of `l` and `r` with `c`
+    - `And`, `Or`, `Not`, `Implies` and `Iff`, the connectives of `Prims`
+    - `Forall bv sort body` and `Exists bv sort body`, quantifiers over `sort`
+    - `App h a`, any other application: `h` applied to its last argument `a`
+    - `Name v`, a named variable
+    - `FV fv`, a top-level name
+    - `IntLit i`, an integer literal
+    - `F_Unknown`, anything else, including terms that are not propositions
+
+    The quantifier constructors are built by
+    `FStar.Reflection.V2.Formula.mk_Forall` and `mk_Exists`. The type is
+    `noeq`. `FStar.Tactics.V2.Logic.cur_formula` returns the formula of the
+    current goal. *)
 [@@plugin]
 noeq type formula =
   | True_  : formula
@@ -73,18 +101,40 @@ noeq type formula =
   | IntLit : int -> formula
   | F_Unknown : formula // Also a baked-in "None"
 
+(*| Builds the formula `Forall` for a quantifier over `typ` with predicate
+    `pred`.
+
+    The body is the application of `pred` to a fresh bound variable named `x`,
+    with de Bruijn index 0. *)
 let mk_Forall (typ : term) (pred : term) : Tot formula =
     let b = pack_bv ({ ppname = as_ppname "x";
                        sort = seal typ;
                        index = 0; }) in
     Forall b typ (pack (Tv_App pred (pack (Tv_BVar b), Q_Explicit)))
 
+(*| Builds the formula `Exists` for a quantifier over `typ` with predicate
+    `pred`.
+
+    The body is the application of `pred` to a fresh bound variable named `x`,
+    with de Bruijn index 0. *)
 let mk_Exists (typ : term) (pred : term) : Tot formula =
     let b = pack_bv ({ ppname = as_ppname "x";
                        sort = seal typ;
                        index = 0; }) in
     Exists b typ (pack (Tv_App pred (pack (Tv_BVar b), Q_Explicit)))
 
+(*| Classifies a term as a formula by its top-level connective, without
+    expecting a `squash`.
+
+    The term is inspected with `FStar.Tactics.NamedView.inspect`, looking
+    through ascriptions. Applications are classified by their head: the
+    connectives `l_and`, `l_or`, `l_imp`, `l_iff` and `l_not`, the quantifiers
+    `l_Forall` and `l_Exists`, the equalities `eq2` and `eq` (with or without
+    their type argument), the comparisons named by `FStar.Reflection.Const.lt_qn`
+    and its siblings, and `b2t true` and `b2t false`. Other applications give
+    `App`; variables, top-level names and integer constants give `Name`, `FV`
+    (or `True_` and `False_`) and `IntLit`; other terms give `F_Unknown`.
+    A tactic failure is raised only for unexpected syntax. *)
 [@@plugin]
 let term_as_formula' (t:term) : Tac formula =
     match inspect_unascribe t with
@@ -166,6 +216,22 @@ let term_as_formula' (t:term) : Tac formula =
     | _ -> raise (TacticFailure (mkmsg "Unexpected: term_as_formula", None))
 
 // Unsquashing
+(*| Classifies a proposition as a formula, expecting it to be squashed.
+
+    If the term is `squash p` it returns the formula of `p`, as computed by
+    `FStar.Reflection.V2.Formula.term_as_formula'`; otherwise it returns
+    `F_Unknown`. Goals are squashed propositions, so this is the function to
+    apply to `FStar.Tactics.V2.Derived.cur_goal ()`.
+
+    ```fstar
+    let _ = assert (1 + 1 == 2) by (
+      match term_as_formula (cur_goal ()) with
+      | Comp (Eq _) _ _ -> trivial ()
+      | _ -> fail "expected an equality")
+    ```
+
+    See `FStar.Reflection.V2.Formula.term_as_formula_total` for a version that
+    also accepts unsquashed terms. *)
 let term_as_formula (t:term) : Tac formula =
     match unsquash_term t with
     | None -> F_Unknown
@@ -174,9 +240,21 @@ let term_as_formula (t:term) : Tac formula =
 
 // Badly named, this only means it always returns a formula even if not properly
 // squashed at the top-level.
+(*| Classifies a term as a formula, removing a top-level `squash` if there is
+    one.
+
+    Unlike `FStar.Reflection.V2.Formula.term_as_formula`, an unsquashed
+    proposition is also classified. Despite the name, it is a tactic like the
+    others. *)
 let term_as_formula_total (t:term) : Tac formula =
     term_as_formula' (maybe_unsquash_term t)
 
+(*| Converts a formula back to a named term view, applying the corresponding
+    connective or relation.
+
+    This is the inverse of `FStar.Reflection.V2.Formula.term_as_formula'` for
+    most formulas, but `Forall` and `Exists` are not supported and give
+    `Tv_Unknown`, as does `F_Unknown`. *)
 let formula_as_term_view (f:formula) : Tot term_view =
     let mk_app' tv args = List.Tot.Base.fold_left (fun tv a -> Tv_App (pack tv) a) tv args in
     let e = Q_Explicit in
@@ -215,6 +293,10 @@ let formula_as_term_view (f:formula) : Tot term_view =
     | F_Unknown ->
         Tv_Unknown
 
+(*| Converts a formula back to a term, by packing
+    `FStar.Reflection.V2.Formula.formula_as_term_view`.
+
+    `Forall`, `Exists` and `F_Unknown` give the unknown term. *)
 let formula_as_term (f:formula) : Tot term =
     pack (formula_as_term_view f)
 
@@ -222,6 +304,8 @@ private let namedv_to_string (namedv : namedv) : Tac string =
     let namedvv = inspect_namedv namedv in
     unseal namedvv.ppname
 
+(*| Renders a formula as a string, for debugging, with its constructor name and
+    its printed subterms. *)
 let formula_to_string (f:formula) : Tac string =
     match f with
     | True_ -> "True_"

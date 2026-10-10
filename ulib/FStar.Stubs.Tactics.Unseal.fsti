@@ -21,9 +21,7 @@ module FStar.Stubs.Tactics.Unseal
 open FStar.Sealed
 open FStar.Tactics.Effect
 
-(** Observe a sealed value. See Sealed.seal too.
+(*| Observes the value inside a sealed value, from a tactic.
 
-    This is just [FStar.Sealed.unseal], which has the [Nd] effect,
-    coerced into [Tac]: it is kept here so that [unseal] remains in
-    scope for the (many) clients that only open [FStar.Tactics]. *)
+    This is `FStar.Sealed.unseal`, which has the `Nd` effect, lifted into `Tac`; it is kept here so that `unseal` remains in scope for the many clients that only open `FStar.Tactics`. See also `FStar.Sealed.seal`. *)
 let unseal (#a:Type) (s : sealed a) : Tac a = FStar.Sealed.unseal s

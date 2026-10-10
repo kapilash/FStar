@@ -20,12 +20,27 @@ open FStar.Reflection.V2.Formula
 open FStar.Reflection.V2.Arith
 
 // decide if the current goal is arith, drop the built representation of it
+(*| Tactic that tests whether the current goal is an arithmetic proposition.
+
+    It returns `true` when `FStar.Reflection.V2.Arith.is_arith_prop` recognizes
+    the goal: equalities and comparisons (`<`, `<=`) between arithmetic
+    expressions, and conjunctions and disjunctions of such. The parsed
+    representation is discarded. *)
 let is_arith_goal () : Tac bool =
     let g = cur_goal () in
     match run_tm (is_arith_prop g) with
     | Inr _ -> true
     | _ -> false
 
+(*| Tactic that splits the current goal along conjunctions, implications and universal quantifiers, and sends the arithmetic parts to SMT in a pruned context.
+
+    On an arithmetic goal (see `FStar.Tactics.Arith.is_arith_goal`), it prunes
+    every module from the SMT context except `Prims` and calls
+    `FStar.Tactics.V2.Derived.smt`. Otherwise it proves `True` with
+    `FStar.Tactics.V2.Derived.trivial`, splits a conjunction, introduces the
+    premise of an implication or the variables of a `forall` and recurses
+    (reverting the introduced hypotheses afterwards), and leaves any other goal
+    unchanged. *)
 val split_arith : unit -> Tac unit
 let rec split_arith () =
     if is_arith_goal () then

@@ -40,49 +40,33 @@ open FStar.Pervasives.Native
 ///   trigger various kinds of special treatments for those
 ///   definitions.
 
-(** [remove_unused_type_parameters]
+(*| An attribute for type abbreviation signatures in interfaces: the listed
+    0-based parameter positions are unused and are removed during extraction.
 
-    This attribute is used to decorate signatures in interfaces for
-    type abbreviations, indicating that the 0-based positional
-    parameters are unused in the definition and should be eliminated
-    for extraction.
-
-    This is important particularly for use with F# extraction, since
-    F# does not accept type abbreviations with unused type parameters.
-
-    See tests/bug-reports/RemoveUnusedTyparsIFace.A.fsti
- *)
+    Needed in particular for F# extraction, which rejects type abbreviations
+    with unused type parameters. *)
 val remove_unused_type_parameters : list int -> Tot unit
 
-(** Values of type [pattern] are used to tag [Lemma]s with SMT
-    quantifier triggers *)
+(*| The type of SMT quantifier triggers attached to lemmas.
+
+    Built with `FStar.Pervasives.smt_pat` and `FStar.Pervasives.smt_pat_or`,
+    usually through the `SMTPat` and `SMTPatOr` syntax. *)
 type pattern : Type0 = unit
 
-(** The concrete syntax [SMTPat] desugars to [smt_pat] *)
+(*| A trigger on the term `x`; the target of the `SMTPat` syntax. *)
 val smt_pat (#a: Type) (x: a) : Tot pattern
 
-(** The concrete syntax [SMTPatOr] desugars to [smt_pat_or]. This is
-    used to represent a disjunction of conjunctions of patterns.
+(*| A disjunction of conjunctions of triggers; the target of the `SMTPatOr`
+    syntax.
 
-    Note, the typing discipline and syntax of patterns is laxer than
-    it should be. Patterns like [SMTPatOr [SMTPatOr [...]]] are
-    expressible, but unsupported by F*
-
-    TODO: We should tighten this up, perhaps just reusing the
-    attribute mechanism for patterns.
-*)
+    Nested disjunctions such as `SMTPatOr [[SMTPatOr ...]]` can be written but
+    are not supported. *)
 val smt_pat_or (x: list (list pattern)) : Tot pattern
 
-(** eqtype is defined in prims at universe 0
-    
-    Although, usually, only universe 0 types have decidable equality,
-    sometimes it is possible to define a type in a higher universe also
-    with decidable equality (e.g., type t : Type u#1 = | Unit)
+(*| Types with decidable equality, in any universe.
 
-    Further, sometimes, as in Lemma below, we need to use a
-    universe-polymorphic equality type (although it is only ever
-    instantiated with `unit`)
-*)
+    `Prims.eqtype` is restricted to universe 0, but some types in higher
+    universes also have decidable equality. *)
 type eqtype_u = a:Type{hasEq a}
 
 (** [Lemma] is a very widely used effect abbreviation.
@@ -113,75 +97,93 @@ type eqtype_u = a:Type{hasEq a}
 *)
 effect Lemma (a: Type) = Tot a
 
-(** IN the default mode of operation, all proofs in a verification
-    condition are bundled into a single SMT query. Sub-terms marked
-    with the [spinoff] below are the exception: each of them is
-    spawned off into a separate SMT query *)
+(*| Marks a proposition to be checked in its own SMT query.
+
+    By default, all proof obligations of a verification condition are sent to
+    the SMT solver in a single query. `spinoff p` is equal to `p` (see
+    `FStar.Pervasives.spinoff_eq`), but is split into a separate query. *)
 val spinoff (p: prop) : prop
 
+(*| `spinoff p` is equal to `p`. *)
 val spinoff_eq (p:prop) : Lemma (spinoff p == p)
 
+(*| `spinoff p` is equivalent to `p`.
+
+    Triggered automatically on `spinoff p`. *)
 val spinoff_equiv (p:prop) : Lemma (p <==> spinoff p) [SMTPat (spinoff p)]
 
-(** Logically equivalent to assert, but spins off separate query *)
+(*| Asserts `p`, like `assert`, but proves it in a separate SMT query. *)
 val assert_spinoff (p: prop) : Pure unit (requires (spinoff p)) (ensures (fun x -> p))
 
-(** The polymorphic identity function *)
+(*| The polymorphic identity function. *)
 unfold
 let id (#a: Type) (x: a) : a = x
 
-(** Trivial postconditions for the [PURE] effect *)
+(*| The trivial postcondition for the `PURE` effect, which accepts every
+    result. *)
 unfold
 let trivial_pure_post (a: Type) : a -> prop = fun _ -> True
 
-(** Sometimes it is convenient to explicit introduce nullary symbols
-    into the ambient context, so that SMT can appeal to their definitions
-    even when they are no mentioned explicitly in the program, e.g., when
-    needed for triggers.
+(*| Marks the term `x` as present in the SMT context.
 
-    Use [intro_ambient t] for that.
-    See, e.g., LowStar.Monotonic.Buffer.fst and its usage there for loc_none *)
+    Lets the solver appeal to the definition of a nullary symbol even when the
+    program does not mention it, for instance for triggers. Introduce it with
+    `FStar.Pervasives.intro_ambient`. *)
 [@@ remove_unused_type_parameters [0; 1;]]
 val ambient (#a: Type) (x: a) : prop
 
-(** cf. [ambient], above *)
+(*| Introduces `FStar.Pervasives.ambient x` into the SMT context. *)
 val intro_ambient (#a: Type) (x: a) : Tot (squash (ambient x))
 
 open FStar.NormSteps
 
 ///  Controlling normalization
 
-(** In any invocation of the F* normalizer, every occurrence of
-    [normalize_term e] is reduced to the full normal for of [e]. *)
+(*| Requests full normalization: during normalization, every occurrence of
+    `normalize_term e` is reduced to the full normal form of `e`.
+
+    Logically the identity; see `FStar.Pervasives.normalize_term_spec`. Not
+    extracted. *)
 noextract
 val normalize_term (#a: Type) (x: a) : Tot a
 
-(** In any invocation of the F* normalizer, every occurrence of
-    [normalize e] is reduced to the full normal for of [e]. *)
+(*| Requests full normalization of a proposition: during normalization, every
+    occurrence of `normalize p` is reduced to the full normal form of `p`.
+
+    Logically the identity; see `FStar.Pervasives.normalize_spec`. *)
 noextract
 val normalize (a: prop) : prop
 
-(** [norm s e] requests normalization of [e] with the reduction steps
-    [s]. *)
+(*| Requests normalization of `x` using only the steps in `s`.
+
+    Logically the identity; see `FStar.Pervasives.norm_spec`. The steps are
+    defined in `FStar.NormSteps`. *)
 noextract
 val norm (s: list norm_step) (#a: Type) (x: a) : Tot a
 
-(** [assert_norm p] reduces [p] as much as possible and then asks the
-    SMT solver to prove the reduct, concluding [p] *)
+(*| Proves `p` by first reducing it as much as possible, then asking the SMT
+    solver to prove the result.
+
+    Useful for facts that follow by computation, such as properties of a
+    specific list. *)
 val assert_norm (p: prop) : Pure unit (requires (normalize p)) (ensures (fun _ -> p))
 
-(** Sometimes it is convenient to introduce an equation between a term
-    and its normal form in the context. *)
+(*| `normalize_term x` is equal to `x`.
+
+    Brings an equation between a term and its normal form into the context. *)
 val normalize_term_spec (#a: Type) (x: a) : Lemma (normalize_term #a x == x)
 
-(** Like [normalize_term_spec], but specialized to [Type0] *)
+(*| `normalize p` is equal to `p`. *)
 val normalize_spec (a: prop) : Lemma (normalize a == a)
 
-(** Like [normalize_term_spec], but with specific normalization steps *)
+(*| `norm s x` is equal to `x`, for any steps `s`. *)
 val norm_spec (s: list norm_step) (#a: Type) (x: a) : Lemma (norm s #a x == x)
 
-(** Use the following to expose an ["opaque_to_smt"] definition to the
-    solver as: [reveal_opaque (`%defn) defn]. *)
+(*| Exposes the definition of an `opaque_to_smt` definition to the solver.
+
+    Use it as `reveal_opaque name defn`, where `name` is the fully qualified
+    name of `defn`, typically obtained with a `%` quotation. The definition is
+    unfolded once. *)
 let reveal_opaque (s: string) = norm_spec [delta_once [s]]
 
 /// The [NDET] effect for nondeterministic, but terminating, computations
@@ -247,9 +249,10 @@ effect EXT (a: Type) = Dv a
 
 /// Exceptional results
 
-(** Normal results are represented using [V x].
-    Handleable exceptions are represented [E e].
-    Fatal errors are [Err msg]. *)
+(*| The result of a computation that may raise an exception or fail.
+
+    The constructors are `V v` for a normal result, `E e` for a handleable
+    exception, and `Err msg` for a fatal error. *)
 noeq
 type result (a: Type) =
   | V : v: a -> result a
@@ -273,62 +276,61 @@ effect Exn (a: Type) = EXN a
 (** A variant of [Exn] with trivial pre- and postconditions *)
 effect Ex (a: Type) = EXN a
 
-(**
- Controlling inversions of inductive type
+(*| Allows the SMT solver to invert the inductive type `a` without limit.
 
- Given a value of an inductive type [v:t], where [t = A | B], the SMT
- solver can only prove that [v=A \/ v=B] by _inverting_ [t]. This
- inversion is controlled by the [ifuel] setting, which usually limits
- the recursion depth of the number of such inversions that the solver
- can perform.
-
- The [inversion] predicate below is a way to circumvent the
- [ifuel]-based restrictions on inversion depth. In particular, if the
- [inversion t] is available in the SMT solver's context, it is free to
- invert [t] infinitely, regardless of the [ifuel] setting.
-
- Be careful using this, since it explicitly subverts the [ifuel]
- setting. If used unwisely, this can lead to very poor SMT solver
- performance.  *)
+    Normally, proving that a value of an inductive type is built with one of
+    its constructors uses up the bounded `ifuel` budget. When `inversion a` is
+    in the context, values of `a` can be inverted regardless of `ifuel`. This
+    deliberately bypasses the `ifuel` setting and can make SMT performance
+    poor; introduce it with `FStar.Pervasives.allow_inversion`. *)
 [@@ remove_unused_type_parameters [0]]
 val inversion (a: Type) : prop
 
-(** To introduce [inversion t] in the SMT solver's context, call
-    [allow_inversion t]. *)
+(*| Introduces `FStar.Pervasives.inversion a` into the SMT context. *)
 val allow_inversion (a: Type) : Pure unit (requires True) (ensures (fun x -> inversion a))
 
-(** Since the [option] type is so common, we always allow inverting
-    options, regardless of [ifuel] *)
+(*| Values of `option a` can always be inverted, regardless of `ifuel`.
+
+    Triggered automatically on `option a`. *)
 val invertOption (a: Type)
     : Lemma (requires True) (ensures (forall (x: option a). None? x \/ Some? x)) [SMTPat (option a)]
 
-(** Values of type [a] or type [b] *)
+(*| A value of type `a` or of type `b`: `Inl v` holds an `a` and `Inr v`
+    holds a `b`. *)
 type either a b =
   | Inl : v: a -> either a b
   | Inr : v: b -> either a b
 
-(** Projections for the components of a dependent pair *)
+(*| The first component of a dependent pair. *)
 let dfst (#a: Type) (#b: a -> GTot Type) (t: dtuple2 a b)
     : Tot a
   = Mkdtuple2?._1 t
 
+(*| The second component of a dependent pair, whose type depends on the first
+    component. *)
 let dsnd (#a: Type) (#b: a -> GTot Type) (t: dtuple2 a b)
     : Tot (b  (Mkdtuple2?._1 t))
   = Mkdtuple2?._2 t
 
-(** Dependent triples, with sugar [x:a & y:b x & c x y] *)
+(*| Dependent triples, written `x:a & y:b x & c x y`.
+
+    The constructor is `Mkdtuple3`, with fields `_1`, `_2` and `_3`. *)
 unopteq
 type dtuple3 (a: Type) (b: (a -> GTot Type)) (c: (x: a -> b x -> GTot Type)) =
   | Mkdtuple3 : _1: a -> _2: b _1 -> _3: c _1 _2 -> dtuple3 a b c
 
-(** Dependent quadruples, with sugar [x:a & y:b x & z:c x y & d x y z] *)
+(*| Dependent quadruples, written `x:a & y:b x & z:c x y & d x y z`.
+
+    The constructor is `Mkdtuple4`, with fields `_1` to `_4`. *)
 unopteq
 type dtuple4
   (a: Type) (b: (x: a -> GTot Type)) (c: (x: a -> b x -> GTot Type))
   (d: (x: a -> y: b x -> z: c x y -> GTot Type))
   = | Mkdtuple4 : _1: a -> _2: b _1 -> _3: c _1 _2 -> _4: d _1 _2 _3 -> dtuple4 a b c d
 
-(** Dependent quadruples, with sugar [x:a & y:b x & z:c x y & d x y z] *)
+(*| Dependent quintuples, written `x:a & y:b x & z:c x y & w:d x y z & e x y z w`.
+
+    The constructor is `Mkdtuple5`, with fields `_1` to `_5`. *)
 unopteq
 type dtuple5
   (a: Type) (b: (x: a -> GTot Type)) (c: (x: a -> b x -> GTot Type))
@@ -336,65 +338,42 @@ type dtuple5
   (e: (x: a -> y: b x -> z: c x y -> w: d x y z -> GTot Type))
   = | Mkdtuple5 : _1: a -> _2: b _1 -> _3: c _1 _2 -> _4: d _1 _2 _3 -> _5: e _1 _2 _3 _4 -> dtuple5 a b c d e
 
-(** Explicitly discarding a value *)
+(*| Explicitly discards a value. *)
 let ignore (#a: Type) (x: a) : Tot unit = ()
 
-(** In a context where [false] is provable, you can prove that any
-    type [a] is inhabited.
-
-    There are many proofs of this fact in F*. Here, in the implementation, we build an
-    infinitely looping function, since the termination check succeeds
-    in a [False] context. *)
+(*| Produces a value of any type `a` in a context where `False` is provable. *)
 val false_elim (#a: Type) (u: unit{False}) : Tot a
-(** Pure and ghost inner let bindings are now always inlined during
-    the wp computation, if: the return type is not unit and the head
-    symbol is not marked irreducible.
+(*| Returns `x`, at the singleton type of values equal to `x`.
 
-    To circumvent this behavior, singleton can be used.
-    See the example usage in ulib/FStar.Algebra.Monoid.fst. *)
+    Pure and ghost inner `let` bindings are inlined when computing
+    verification conditions unless their type is `unit` or their head symbol
+    is `irreducible`. Binding `singleton e` instead of `e` keeps the binding.
+    See `FStar.Algebra.Monoid` for an example. *)
 val singleton (#a: Type) (x: a) : Tot (y: a{y == x})
 
-(** A weakening coercion from eqtype to Type.
+(*| Weakens an `eqtype` to a `Type`.
 
-    One of its uses is in types of layered effect combinators that
-    are subjected to stricter typing discipline (no subtyping) *)
+    Useful, for example, in types of layered effect combinators, which are
+    checked without subtyping. *)
 unfold let eqtype_as_type (a:eqtype) : Type = a
 
-(** A coercion of the [x] from [a] to [b], when [a] is provably equal
-    to [b]. In most cases, F* will silently coerce from [a] to [b]
-    along a provable equality (as in the body of this
-    function). Occasionally, you may need to apply this explicitly *)
+(*| Coerces `x` from type `a` to type `b`, given a proof that `a` equals `b`.
+
+    Usually the coercion is applied silently; occasionally it must be explicit. *)
 inline_for_extraction noextract
 let coerce_eq (#a:Type) (#b:Type) (_:squash (a == b)) (x:a) : b = x
 
-(** This attribute decorates a let binding, e.g.,
+(*| An attribute for `let` bindings: before extraction, the definition is
+    reduced with the normalization steps `steps`.
 
-    [@@normalize_for_extraction steps]
-    let f = e
-
-    The effect is that prior to extraction, F* will first reduce [e]
-    using the normalization [steps], and then proceed to extract it as
-    usual.
-
-    Almost the same behavior can be achieved by using a
-    [postprocess_for_extraction_with t] attribute, which runs tactic
-    [t] on the goal [e == ?u] and extracts the solution to [?u] in
-    place of [e]. However, using a tactic to postprocess a term is
-    more general than needed for some cases.
-
-    In particular, if we intend to only normalize [e] before
-    extraction (rather than applying some other form of equational
-    reasoning), then using [normalize_for_extraction] can be more
-    efficient, for the following reason:
-
-    Since we are reducing [e] just before extraction, F* can enable an
-    otherwise non-user-facing normalization feature that allows all
-    arguments marked [@@@erasable] to be erased to [()]---these terms
-    will anyway be extracted to [()] so erasing them during
-    normalization is a useful optimization.
-  *)
+    Similar to the `postprocess_for_extraction_with` attribute, which runs a
+    tactic, but cheaper when only normalization is needed. Because it runs
+    just before extraction, arguments marked `erasable` can also be erased to
+    `()` during this normalization. *)
 val normalize_for_extraction (steps:list norm_step) : Tot unit
 
 (* When using [normalize_for_extraction] this flag indicates that the type
  * of the definition should also be normalized. *)
+(*| An attribute used with `FStar.Pervasives.normalize_for_extraction`: the
+    type of the definition is also normalized before extraction. *)
 val normalize_for_extraction_type : unit

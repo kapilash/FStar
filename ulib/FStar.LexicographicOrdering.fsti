@@ -46,6 +46,12 @@ open FStar.WellFounded
 ///   - Either their first components are related
 ///   - Or, the first components are equal, and the second components are related
 
+(*| The lexicographic order on dependent pairs: `(| x1, y1 |)` precedes
+    `(| x2, y2 |)` when `r_a x1 x2`, or `x1 == x2` and `r_b x1 y1 y2`.
+
+    The relation is squashed (a `prop`), which suits SMT proofs. It is
+    well-founded when `r_a` and every `r_b x` are, see
+    `FStar.LexicographicOrdering.lex_t_wf`. *)
 let lex_t (#a:Type u#a) (#b:a -> Type u#b)
   (r_a:binrel u#a a)
   (r_b:(x:a -> binrel u#b (b x)))
@@ -57,6 +63,8 @@ let lex_t (#a:Type u#a) (#b:a -> Type u#b)
 /// Given two well-founded relations `r_a` and `r_b`,
 ///   their lexicographic ordering is also well-founded
 
+(*| The lexicographic order `FStar.LexicographicOrdering.lex_t r_a r_b` is
+    well-founded when `r_a` and each `r_b x` are. *)
 val lex_t_wf (#a:Type u#a) (#b:a -> Type u#b)
   (#r_a:binrel u#a a)
   (#r_b:(x:a -> binrel u#b (b x)))
@@ -66,6 +74,8 @@ val lex_t_wf (#a:Type u#a) (#b:a -> Type u#b)
 
 /// And prove that is it is well-founded
 
+(*| Propositional form of `FStar.LexicographicOrdering.lex_t_wf`: the
+    lexicographic order is `FStar.WellFounded.is_well_founded`. *)
 let lex_wf (#a:Type u#a) (#b:a -> Type u#b)
   (#r_a:binrel u#a a)
   (#r_b:(x:a -> binrel u#b (b x)))
@@ -77,6 +87,12 @@ let lex_wf (#a:Type u#a) (#b:a -> Type u#b)
 
 /// A user-friendly lex_wf that returns a well-founded relation
 
+(*| The lexicographic order on dependent pairs as a
+    `FStar.WellFounded.well_founded_relation`, given well-foundedness proofs
+    for both components.
+
+    Useful in `decreases` clauses, for instance to prove termination of the
+    Ackermann function. *)
 unfold
 let lex (#a:Type u#a) (#b:a -> Type u#b)
   (#r_a:binrel u#a a)
@@ -92,6 +108,7 @@ let lex (#a:Type u#a) (#b:a -> Type u#b)
 ///   in terms of the dependent lex tuple,
 ///   and prove its well-foundedness
 
+(*| Converts a non-dependent pair `(x, y)` to the dependent pair `(| x, y |)`. *)
 let tuple_to_dep_tuple (#a #b:Type) (x:a & b) : dtuple2 a (fun _ -> b) =
   (| fst x, snd x |)
 
@@ -99,6 +116,11 @@ let tuple_to_dep_tuple (#a #b:Type) (x:a & b) : dtuple2 a (fun _ -> b) =
 /// The non-dependent lexicographic ordering
 ///   and its well-foundedness
 
+(*| The lexicographic order on non-dependent pairs: `(x1, y1)` precedes
+    `(x2, y2)` when `r_a x1 x2`, or `x1 == x2` and `r_b y1 y2`.
+
+    Defined via `FStar.LexicographicOrdering.lex_t` and
+    `FStar.LexicographicOrdering.tuple_to_dep_tuple`. *)
 let lex_t_non_dep (#a:Type u#a) 
                   (#b:Type u#b)
                   (r_a:binrel u#a a)
@@ -107,6 +129,9 @@ let lex_t_non_dep (#a:Type u#a)
   = fun x y ->
       lex_t r_a (fun _ -> r_b) (tuple_to_dep_tuple x) (tuple_to_dep_tuple y)
 
+(*| The non-dependent lexicographic order
+    `FStar.LexicographicOrdering.lex_t_non_dep r_a r_b` is well-founded when
+    `r_a` and `r_b` are. *)
 val lex_t_non_dep_wf (#a:Type u#a)
                      (#b:Type u#b)
                      (#r_a:binrel u#a a)
@@ -119,6 +144,8 @@ val lex_t_non_dep_wf (#a:Type u#a)
 /// Symmetric product relation
 ///   we can prove its well-foundedness by showing that it is a subrelation of non-dep lex
 
+(*| The symmetric product of two relations: two pairs are related when one
+    component is equal and the other component is related by its relation. *)
 let sym (#a:Type u#a) (#b:Type u#b) (r_a:binrel u#a a) (r_b:binrel u#b b)
     (x: a & b) (y : a & b) : prop =
   (snd x == snd y /\ r_a (fst x) (fst y)) \/
@@ -126,6 +153,9 @@ let sym (#a:Type u#a) (#b:Type u#b) (r_a:binrel u#a a) (r_b:binrel u#b b)
 
 /// sym is a subrelation of non-dependent lex
 
+(*| The symmetric product `FStar.LexicographicOrdering.sym r_a r_b` is a
+    subrelation of the lexicographic order
+    `FStar.LexicographicOrdering.lex_t_non_dep r_a r_b`. *)
 let sym_sub_lex (#a:Type u#a)
                 (#b:Type u#b)
                 (#r_a:binrel u#a a)
@@ -137,6 +167,11 @@ let sym_sub_lex (#a:Type u#a)
 
 /// Theorem for symmetric product
 ///
+(*| The symmetric product `FStar.LexicographicOrdering.sym r_a r_b` is
+    well-founded when `r_a` and `r_b` are.
+
+    Proved from `FStar.LexicographicOrdering.sym_sub_lex` and
+    `FStar.WellFounded.subrelation_wf`. *)
 let sym_wf (#a:Type u#a)
            (#b:Type u#b)
            (#r_a:binrel u#a a)

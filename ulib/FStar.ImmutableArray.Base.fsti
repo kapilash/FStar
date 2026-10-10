@@ -37,21 +37,37 @@
 *)
 module FStar.ImmutableArray.Base
 
-(* The main type of immutable arrays *)
+(*| Primitive type of immutable arrays with elements of type `a`: a sequence-like type intended to support constant-time random access, unlike `FStar.Seq.Base.seq`.
+
+    Assumed. Values are built with `FStar.ImmutableArray.Base.of_list` and read with `FStar.ImmutableArray.Base.length` and `FStar.ImmutableArray.Base.index`. The F\* normalizer and NBE engine reduce these three functions on concrete arrays, and the module notes say the type is implemented by an OCaml array. The parameter is strictly positive, so `t` can be used in inductive type definitions. Include `FStar.ImmutableArray` for the lemmas relating arrays to lists. *)
 new
 val t ([@@@strictly_positive] a:Type u#a) : Type u#a
 
-(* An array supports equality when its elements also do. *)
+(*| An array type supports decidable equality when its element type does.
+
+    Triggered automatically on `hasEq (t a)`. *)
 val array_has_eq (a : Type) : Lemma
   (requires hasEq a)
   (ensures hasEq (t a))
   [SMTPat (hasEq (t a))]
 
-(* Creating an immutable array from a list *)
+(*| Creates an immutable array with the elements of a list, in order.
+
+    Assumed; specified by `FStar.ImmutableArray.to_list_of_list`. The normalizer reduces `of_list`, `length` and `index` on concrete arrays, so `assert_norm` can evaluate them:
+
+    ```fstar
+    let _ = assert_norm (FStar.ImmutableArray.length (FStar.ImmutableArray.of_list [10; 20; 30]) == 3)
+
+    let _ = assert_norm (FStar.ImmutableArray.index (FStar.ImmutableArray.of_list [10; 20; 30]) 1 == 20)
+    ``` *)
 val of_list (#a:Type u#a) (l:list a) : Tot (t a)
 
-(* The length of an array (is the length of the list from which it was created) *)
+(*| Returns the number of elements of an immutable array, which is the length of the list it was created from.
+
+    Assumed; specified by `FStar.ImmutableArray.length_spec`. *)
 val length (#a:Type) (s:t a) : Tot nat
 
-(* Indexing the array `s` at offset `i`, which must be within bounds *)
+(*| Returns the element at position `i`, which must be less than `length s`.
+
+    Assumed; specified by `FStar.ImmutableArray.index_spec`. The bound is a refinement, so an out-of-bounds access does not typecheck. *)
 val index (#a:Type) (s:t a) (i:nat { i < length s }) : Tot a

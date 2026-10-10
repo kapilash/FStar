@@ -33,6 +33,23 @@ open FStar.Stubs.Reflection.V2.Builtins
 module L = FStar.List.Tot
 
 (* Universes are independent of terms, so their spec type is standalone. *)
+(*| Erasable spec model of reflected universes, with no range or name data
+    beyond what the type theory needs.
+
+    It mirrors `FStar.Stubs.Reflection.V2.Data.universe_view`, but recursively,
+    so it can be matched structurally without calling
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_universe`. The constructors are:
+
+    - `Us_Zero`, the universe zero
+    - `Us_Succ u`, the successor of `u`
+    - `Us_Max us`, the maximum of the list `us`
+    - `Us_BVar n`, a bound universe variable with de Bruijn index `n`
+    - `Us_Name n`, a named universe variable
+    - `Us_Unif uv`, a universe unification variable
+    - `Us_Unk`, an unknown universe
+
+    The type is `erasable` and `noeq`. `FStar.Reflection.TermSpec.denote_universe`
+    computes the spec of a concrete universe. *)
 [@@erasable]
 noeq
 type universe_spec =
@@ -46,6 +63,47 @@ type universe_spec =
 
 (* The mutually-recursive spec model of terms, comps, binders,
    qualifiers and patterns. *)
+(*| Erasable spec model of reflected terms, the vocabulary in which typing
+    rules can be stated without reasoning about ranges or names.
+
+    `term_spec` and its companion types mirror the reflected syntax of
+    `FStar.Stubs.Reflection.V2.Data` but drop data irrelevant to the type
+    theory: ranges, pretty-printing names, sealed sorts, binder attributes and
+    unification metadata. Unlike `FStar.Stubs.Reflection.Types.term`, they are
+    plain inductives that can be matched on and recursed over structurally,
+    without going through `FStar.Stubs.Reflection.V2.Builtins.inspect_ln`. All
+    are `erasable` and `noeq`. The concrete-to-spec map is the mutually
+    recursive `denote_term` family of this module (`denote_term`,
+    `denote_binder`, `denote_comp`, `denote_pattern` and friends).
+
+    The constructors of `term_spec` follow `FStar.Stubs.Reflection.V2.Data.term_view`:
+
+    - `Ts_Var uniq`, a free (named) variable, kept only by its unique number
+    - `Ts_BVar index`, a bound variable by de Bruijn index
+    - `Ts_FVar nm` and `Ts_UInst nm us`, top-level names, without and with universes
+    - `Ts_App hd arg q`, an application to one argument with qualifier `q`
+    - `Ts_Abs b body` and `Ts_Arrow b c`, abstractions and arrows
+    - `Ts_Type u`, a universe of types
+    - `Ts_Refine sort ref`, a refinement keeping only the binder sort
+    - `Ts_Const c`, a constant
+    - `Ts_Uvar n`, a unification variable, kept only by its number
+    - `Ts_Let recf attrs sort def body`, a let binding keeping only the binder sort
+    - `Ts_Match scrutinee ret brs`, a match with optional return annotation
+    - `Ts_AscribedT` and `Ts_AscribedC`, type and computation-type ascriptions
+    - `Ts_Unknown` and `Ts_Unsupp`, the unknown term and unsupported syntax
+
+    The companion types defined together with it are:
+
+    - `aqualv_spec`, argument qualifiers: `Qs_Implicit`, `Qs_Explicit`, `Qs_Equality` and `Qs_Meta t`
+    - `binder_spec`, a binder `Bs sort qual`, without name or attributes
+    - `decreases_order_spec`, `Ds_lex ts` or `Ds_wf rel e`
+    - `cflag_spec`, computation flags `Fs_SMTPAT t` and `Fs_DECREASES d`
+    - `comp_spec`, a computation type `Cs eff_name result flags`
+    - `pattern_spec`, patterns `Ps_Constant`, `Ps_Cons`, `Ps_Var` and `Ps_Dot_Term`
+
+    A `comp_spec` does not record the source effect name, which is presentation
+    only. `Ps_Var` carries nothing, since all pattern variables are provably
+    equal in the spec. *)
 [@@erasable]
 noeq
 type term_spec =
@@ -116,6 +174,12 @@ and pattern_spec =
 (* Termination helpers: decreasing map/option over a bounded structure.
    These mirror [list_dec_cmp]/[opt_dec_cmp] in FStar.Reflection.TermEq. *)
 
+(*| Maps a ghost function over a list whose elements precede a bound `top`.
+
+    The refinement `x << top` passed to `f` lets recursive denotations (such as
+    `FStar.Reflection.TermSpec.denote_universe`) recurse through a list of
+    subterms while proving termination on `top`. It mirrors the decreasing list
+    helpers of `FStar.Reflection.TermEq`. *)
 let rec map_dec (#a:Type u#aa) (#b:Type u#bb) (#tb:Type u#tt)
                 (top:tb) (f : (x:a{x << top} -> b)) (l:list a{l << top})
   : GTot (list b) (decreases l)
@@ -123,6 +187,10 @@ let rec map_dec (#a:Type u#aa) (#b:Type u#bb) (#tb:Type u#tt)
     | [] -> []
     | x::xs -> f x :: map_dec top f xs
 
+(*| Maps a ghost function over an option whose content precedes a bound `top`.
+
+    The option counterpart of `FStar.Reflection.TermSpec.map_dec`, for
+    recursion through an optional subterm. *)
 let opt_dec (#a:Type u#aa) (#b:Type u#bb) (#tb:Type u#tt)
             (top:tb) (f : (x:a{x << top} -> b)) (o:option a{o << top})
   : GTot (option b)
@@ -133,6 +201,12 @@ let opt_dec (#a:Type u#aa) (#b:Type u#bb) (#tb:Type u#tt)
 (* -------------------------------------------------------------------- *)
 (* Universes: standalone recursion via inspect_universe. *)
 
+(*| Computes the spec model of a reflected universe.
+
+    It recurses structurally through
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_universe`, mapping each
+    constructor of `FStar.Stubs.Reflection.V2.Data.universe_view` to the
+    corresponding constructor of `FStar.Reflection.TermSpec.universe_spec`. *)
 let rec denote_universe (u:universe) : Tot universe_spec (decreases u) =
   match inspect_universe u with
   | Uv_Zero    -> Us_Zero
@@ -143,6 +217,8 @@ let rec denote_universe (u:universe) : Tot universe_spec (decreases u) =
   | Uv_Unif uv -> Us_Unif uv
   | Uv_Unk     -> Us_Unk
 
+(*| Computes the spec models of a list of universes, with
+    `FStar.Reflection.TermSpec.denote_universe` on each element. *)
 let denote_universes (us:list universe) : GTot (list universe_spec) =
   L.map denote_universe us
 
@@ -257,52 +333,124 @@ and denote_subpats (ps:list (pattern & bool)) : GTot (list (pattern_spec & bool)
    builds with [pack_ln]. They rely only on [inspect_pack_inv], which
    remains valid. *)
 
+(*| The spec denotation of a term built with `Tv_Var v`: `Ts_Var` of the unique number of `v`.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_var (v:namedv)
   : Lemma (denote_term (pack_ln (Tv_Var v)) == Ts_Var (inspect_namedv v).uniq)
   = inspect_pack_inv (Tv_Var v)
 
+(*| The spec denotation of a term built with `Tv_BVar v`: `Ts_BVar` of the de Bruijn index of `v`.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_bvar (v:bv)
   : Lemma (denote_term (pack_ln (Tv_BVar v)) == Ts_BVar (inspect_bv v).index)
   = inspect_pack_inv (Tv_BVar v)
 
+(*| The spec denotation of a term built with `Tv_FVar f`: `Ts_FVar` of the name of `f`.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_fvar (f:fv)
   : Lemma (denote_term (pack_ln (Tv_FVar f)) == Ts_FVar (inspect_fv f))
   = inspect_pack_inv (Tv_FVar f)
 
+(*| The spec denotation of a term built with `Tv_UInst f us`: `Ts_UInst` of the name of `f` and the denoted universes.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_uinst (f:fv) (us:universes)
   : Lemma (denote_term (pack_ln (Tv_UInst f us)) == Ts_UInst (inspect_fv f) (denote_universes us))
   = inspect_pack_inv (Tv_UInst f us)
 
+(*| The spec denotation of a term built with `Tv_App hd a`: `Ts_App` of the denoted head, argument and qualifier.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_app (hd:term) (a:argv)
   : Lemma (denote_term (pack_ln (Tv_App hd a)) ==
            Ts_App (denote_term hd) (denote_term (fst a)) (denote_aqualv (snd a)))
   = inspect_pack_inv (Tv_App hd a)
 
+(*| The spec denotation of a term built with `Tv_Abs b body`: `Ts_Abs` of the denoted binder and body.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_abs (b:binder) (body:term)
   : Lemma (denote_term (pack_ln (Tv_Abs b body)) == Ts_Abs (denote_binder b) (denote_term body))
   = inspect_pack_inv (Tv_Abs b body)
 
+(*| The spec denotation of a term built with `Tv_Arrow b c`: `Ts_Arrow` of the denoted binder and computation type.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_arrow (b:binder) (c:comp)
   : Lemma (denote_term (pack_ln (Tv_Arrow b c)) == Ts_Arrow (denote_binder b) (denote_comp c))
   = inspect_pack_inv (Tv_Arrow b c)
 
+(*| The spec denotation of a term built with `Tv_Type u`: `Ts_Type` of the denoted universe.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_type (u:universe)
   : Lemma (denote_term (pack_ln (Tv_Type u)) == Ts_Type (denote_universe u))
   = inspect_pack_inv (Tv_Type u)
 
+(*| The spec denotation of a term built with `Tv_Refine sb r`: `Ts_Refine` of the denoted binder sort and refinement.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_refine (sb:simple_binder) (r:term)
   : Lemma (denote_term (pack_ln (Tv_Refine sb r)) ==
            Ts_Refine (denote_term (inspect_binder sb).sort) (denote_term r))
   = inspect_pack_inv (Tv_Refine sb r)
 
+(*| The spec denotation of a term built with `Tv_Const c`: `Ts_Const c`.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_const (c:vconst)
   : Lemma (denote_term (pack_ln (Tv_Const c)) == Ts_Const c)
   = inspect_pack_inv (Tv_Const c)
 
+(*| The spec denotation of a term built with `Tv_Uvar n ctx`: `Ts_Uvar n`, forgetting the context and substitution.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_uvar (n:nat) (ctx:ctx_uvar_and_subst)
   : Lemma (denote_term (pack_ln (Tv_Uvar n ctx)) == Ts_Uvar n)
   = inspect_pack_inv (Tv_Uvar n ctx)
 
+(*| The spec denotation of a term built with `Tv_Match sc ret brs`: `Ts_Match` of the denoted scrutinee, return annotation and branches.
+
+    A rewrite for reasoning about the spec of a term built with
+    `FStar.Stubs.Reflection.V2.Builtins.pack_ln`, proved from
+    `FStar.Stubs.Reflection.V2.Builtins.inspect_pack_inv`. It has no SMT
+    pattern, so call it explicitly. *)
 let denote_pack_match (sc:term) (ret:option match_returns_ascription) (brs:list branch)
   : Lemma (denote_term (pack_ln (Tv_Match sc ret brs)) ==
            Ts_Match (denote_term sc) (denote_ret ret) (denote_branches brs))
@@ -318,6 +466,14 @@ let denote_pack_match (sc:term) (ret:option match_returns_ascription) (brs:list 
    [aqualv] (it keeps [snd argv]) nor into a binder's qualifier, so the
    spec mirror leaves [aqualv_spec] and the [qual] field untouched. *)
 
+(*| One element of a spec-level substitution on
+    `FStar.Reflection.TermSpec.term_spec`.
+
+    The constructors mirror `DT`, `NT` and `ND` of `FStar.Reflection.Typing.subst_elt`:
+
+    - `DTs i t` replaces the bound variable with de Bruijn index `i` by `t`
+    - `NTs x t` replaces the free variable with unique number `x` by `t`
+    - `NDs x i` replaces the free variable `x` by the bound index `i`, closing over it *)
 [@@erasable]
 noeq
 type subst_spec_elt =
@@ -325,22 +481,42 @@ type subst_spec_elt =
   | NTs : nat -> term_spec -> subst_spec_elt
   | NDs : nat -> nat -> subst_spec_elt
 
+(*| Shifts the de Bruijn indices in a substitution element by `n`, for use
+    under `n` additional binders.
+
+    `DTs` and `NDs` have their index increased; `NTs` is unchanged. Mirrors
+    `FStar.Reflection.Typing.shift_subst_elt`. *)
 let shift_subst_spec_elt (n:nat) = function
   | DTs i t -> DTs (i + n) t
   | NTs x t -> NTs x t
   | NDs x i -> NDs x (i + n)
 
+(*| A spec-level substitution: an erased list of
+    `FStar.Reflection.TermSpec.subst_spec_elt`, applied by `subst_term_spec`.
+
+    Mirrors `FStar.Reflection.Typing.subst`. *)
 let subst_spec = Ghost.erased (list subst_spec_elt)
 
+(*| Shifts every element of a substitution by `n`, for use under `n` additional
+    binders.
+
+    Mirrors `FStar.Reflection.Typing.shift_subst_n`. *)
 let shift_subst_spec_n (n:nat) (s:subst_spec) : subst_spec = L.map (shift_subst_spec_elt n) s
 
+(*| Shifts a substitution by one, for use under one additional binder.
+
+    The same as `FStar.Reflection.TermSpec.shift_subst_spec_n 1`. *)
 let shift_subst_spec = shift_subst_spec_n 1
 
+(*| Returns `Some k` when the term is the free variable `Ts_Var k`, and `None`
+    otherwise. *)
 let maybe_uniq_of_spec (ts:term_spec) : GTot (option nat) =
   match ts with
   | Ts_Var k -> Some k
   | _ -> None
 
+(*| Finds the first `DTs i t` element of a substitution for the de Bruijn
+    index `i`, or `None` if there is none. *)
 let rec find_matching_subst_spec_elt_bv (s:subst_spec) (i:nat) : GTot (option subst_spec_elt) =
   match s with
   | [] -> None
@@ -348,6 +524,11 @@ let rec find_matching_subst_spec_elt_bv (s:subst_spec) (i:nat) : GTot (option su
     if j = i then Some (DTs j t) else find_matching_subst_spec_elt_bv ss i
   | _::ss -> find_matching_subst_spec_elt_bv ss i
 
+(*| Applies a substitution to the bound variable with de Bruijn index `i`.
+
+    If the substitution has a `DTs i t` element (the first one is used), the
+    result is `t`; otherwise the variable `Ts_BVar i` is left unchanged.
+    Mirrors `FStar.Reflection.Typing.subst_db`. *)
 let subst_db_spec (i:nat) (s:subst_spec) : GTot term_spec =
   match find_matching_subst_spec_elt_bv s i with
   | Some (DTs _ t) ->
@@ -356,6 +537,8 @@ let subst_db_spec (i:nat) (s:subst_spec) : GTot term_spec =
      | Some k -> Ts_Var k)
   | _ -> Ts_BVar i
 
+(*| Finds the first `NTs` or `NDs` element of a substitution for the free
+    variable with unique number `uniq`, or `None` if there is none. *)
 let rec find_matching_subst_spec_elt_var (s:subst_spec) (uniq:nat) : GTot (option subst_spec_elt) =
   match s with
   | [] -> None
@@ -364,6 +547,12 @@ let rec find_matching_subst_spec_elt_var (s:subst_spec) (uniq:nat) : GTot (optio
     if y = uniq then Some (L.hd s) else find_matching_subst_spec_elt_var rest uniq
   | _::rest -> find_matching_subst_spec_elt_var rest uniq
 
+(*| Applies a substitution to the free variable with unique number `uniq`.
+
+    The first `NTs` or `NDs` element for `uniq` decides: `NTs uniq t` gives
+    `t`, and `NDs uniq i` gives the bound variable `Ts_BVar i`. Otherwise the
+    variable `Ts_Var uniq` is left unchanged. Mirrors
+    `FStar.Reflection.Typing.subst_var`. *)
 let subst_var_spec (uniq:nat) (s:subst_spec) : GTot term_spec =
   match find_matching_subst_spec_elt_var s uniq with
   | Some (NTs _ t) ->

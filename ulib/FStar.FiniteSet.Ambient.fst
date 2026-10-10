@@ -39,6 +39,24 @@ module FStar.FiniteSet.Ambient
 
 open FStar.FiniteSet.Base
 
+(*| Makes every fact of `FStar.FiniteSet.Base.all_finite_set_facts` hold in
+    the SMT context of every module that depends on
+    `FStar.FiniteSet.Ambient`.
+
+    It is a top-level proof of `squash all_finite_set_facts`, obtained from
+    `FStar.FiniteSet.Base.all_finite_set_facts_lemma`. The SMT encoding of a
+    top-level definition records its type, so the facts are assumed in every
+    later query; nothing needs to be called.
+
+    ```fstar
+    open FStar.FiniteSet.Ambient
+    let singleton_has_its_element (x: int)
+      : Lemma (FStar.FiniteSet.Base.mem x (FStar.FiniteSet.Base.singleton x))
+      = ()
+    ```
+
+    To use the facts only in a few proofs, call
+    `FStar.FiniteSet.Base.all_finite_set_facts_lemma` instead. *)
 let all_finite_set_facts_ambient : (squash all_finite_set_facts) =
   all_finite_set_facts_lemma ()
 

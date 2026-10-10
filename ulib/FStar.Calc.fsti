@@ -27,8 +27,10 @@ open FStar.Preorder
 ///
 /// See examples/calc for some examples
 
-/// Definition of when a calc chain is sound
+(*| Holds when `x` and `y` are linked by a chain of steps using the relations
+    in `rs`, read in reverse order.
 
+    The empty chain relates `x` only to itself. Opaque to SMT. *)
 [@@"opaque_to_smt"]
 let rec calc_chain_related (#a:Type) (rs:list (relation a)) (x y:a)
   : prop
@@ -37,23 +39,39 @@ let rec calc_chain_related (#a:Type) (rs:list (relation a)) (x y:a)
       (* GM: The `:t` annotation below matters a lot for compactness of the formula! *)
     | r1::rs -> exists (w:a). calc_chain_related rs x w /\ r1 w y
 
+(*| Holds when every chain of steps using the relations `rs` implies the
+    relation `p`.
+
+    The side condition checked by `FStar.Calc.calc_finish`. Opaque to SMT. *)
 [@@"opaque_to_smt"]
 let calc_chain_compatible (#t:Type) (rs:list (relation t)) (p:relation t)
   : prop
   = forall (x y:t). calc_chain_related rs x y ==> p x y
 
-/// A proof irrelevant type for the calc chains
+(*| A proof-irrelevant witness that `x` and `y` are related by a chain of
+    calculational steps using the relations `rs`.
+
+    Users rarely need this module directly: `calc` blocks are desugared into
+    `FStar.Calc.calc_init`, `FStar.Calc.calc_step` and `FStar.Calc.calc_finish`.
+
+    ```fstar
+    let calc_example (a b: int) (h: squash (a == b)) : Lemma (a + 1 == b + 1) =
+      calc (==) {
+        a + 1;
+        == { }
+        b + 1;
+      }
+    ``` *)
 val calc_pack (#a:Type) (rs:list (relation a)) (x y:a) : prop
 
-/// Initializing a calc chain
-
+(*| Starts a calculational proof at `x`, with an empty chain of steps. *)
 val calc_init (#a:Type) (x:a) : Tot (calc_pack [] x x)
 
-/// A single step of the calc chain
-///
-/// Note the list of relations is reversed
-///   calc_chain_compatible accounts for it
+(*| Extends a calculational proof from `x` to `y` with one step from `y` to `z`
+    using the relation `p`.
 
+    `pf` is the proof of the earlier steps and `j` justifies `p y z`. The step
+    relation is prepended, so the list of relations is in reverse order. *)
 val calc_step
   (#a:Type)
   (#x #y:a)
@@ -64,9 +82,10 @@ val calc_step
   (j:unit -> Tot (squash (p y z)))            (* Justification *)
   : Tot (calc_pack (p::rs) x z)
 
-/// Finishing a calc proof,
-///   providing the top-level relation as the postcondition
+(*| Concludes a calculational proof from `x` to `y`, establishing `p x y`.
 
+    Requires that the chain of step relations is compatible with `p`; when it
+    is not, the failure is reported at the location of the proof. *)
 val calc_finish
   (#a:Type)
   (p:relation a)
@@ -82,5 +101,10 @@ val calc_finish
                          (calc_chain_compatible rs p))))
       (ensures (p x y))
 
+(*| Turns a ghost function from proofs of `p` to proofs of `q` into a proof of
+    `p ==> q`.
+
+    Used when desugaring `calc` steps whose relation is `==>`, so that the
+    justification of a step may assume its left-hand side. *)
 val calc_push_impl (#p #q:prop) (f:squash p -> GTot (squash q))
   : Tot (squash (p ==> q))

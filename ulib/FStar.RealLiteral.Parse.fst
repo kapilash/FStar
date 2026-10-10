@@ -61,10 +61,13 @@ private let rec int_of_digits_acc (acc : int) (ds : list int) : Tot int (decreas
   | [] -> acc
   | d :: ds' -> int_of_digits_acc (acc * 10 + d) ds'
 
-(** Parse a real literal. The accepted syntax is an optional '-' sign,
-followed by a non-empty sequence of decimal digits, optionally followed by
-a '.' and a (possibly empty) sequence of decimal digits. Returns None if
-the string is not a well-formed real literal. *)
+(*| Parses a decimal real literal, returning `None` if the string is not well formed.
+
+    The accepted syntax is an optional `-` sign, then a non-empty sequence of decimal digits, then optionally a `.` followed by a possibly empty sequence of decimal digits. No exponent, leading `+` or surrounding whitespace is accepted. The result is canonical, so trailing zeros in the fractional part do not matter.
+
+    ```fstar
+    let _ = assert_norm (FStar.RealLiteral.Parse.of_string "1.50" == Some (FStar.RealLiteral.mk 15 (-1)))
+    ``` *)
 let of_string (s : string) : option real_literal =
   let cs = FStar.String.list_of_string s in
   let neg, cs =

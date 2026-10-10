@@ -24,31 +24,37 @@ module FStar.IndefiniteDescription
 /// https://github.com/coq/coq/wiki/CoqAndAxioms#indefinite-description--hilberts-epsilon-operator
 /// https://en.wikipedia.org/wiki/Theory_of_descriptions#Indefinite_descriptions
 
-(** Given a classical proof of [exists x. p x], we can exhibit
-    a witness [x:erased a] validating [p x] in GTot. *)
+(*| Picks a witness of the satisfiable predicate `p`, in ghost code.
+
+    The indefinite description axiom, also known as Hilbert's epsilon operator.
+    The witness is ghost, so it cannot be used in computationally relevant
+    code; see `FStar.IndefiniteDescription.indefinite_description_tot` for an
+    erased witness in total code. *)
 val indefinite_description_ghost (a: Type) (p: (a -> prop) { exists x. p x })
   : GTot (x: a { p x })
 
-(** Given a classical proof of [exists x. p x], we can exhibit an erased
-    (computationally irrelevant) a witness [x:erased a] validating [p x].  *)
+(*| Picks an erased witness of the satisfiable predicate `p`.
+
+    Like `FStar.IndefiniteDescription.indefinite_description_ghost`, but the
+    witness is wrapped in `FStar.Ghost.erased`, so total code can use it. *)
 val indefinite_description_tot (a:Type) (p:(a -> prop) { exists x. p x })
   : Tot (w:Ghost.erased a{ p w })
     
-(** Indefinite description entails the a strong form of the excluded
-    middle, i.e., one can case-analyze the truth of a proposition
-    (only in [Ghost]) *)
+(*| Decides any proposition `p`, in ghost code: returns `true` exactly when `p`
+    holds.
+
+    A consequence of indefinite description. *)
 val strong_excluded_middle (p: prop) : GTot (b: bool{b = true <==> p})
 
-(** We also can combine this with a the classical tautology converting
-    with a [forall] and an [exists] to extract a witness of validity of [p] from
-    a classical proof that [p] is not universally invalid.
-
-    Note, F*+SMT can easily prove, since it is just classical logic:
-      [(~(forall n. ~(p n))) ==> (exists n. p n) ] *)
+(*| Returns a natural number satisfying the boolean predicate `p`, given that
+    `p` does not fail for every natural number. *)
 val stronger_markovs_principle (p: (nat -> GTot bool))
     : Ghost nat (requires (~(forall (n: nat). ~(p n)))) (ensures (fun n -> p n))
 
-(** A variant of the previous lemma, but for a [prop] rather than a
-    boolean predicate *)
+(*| Returns a natural number satisfying the predicate `p`, given that `p` does
+    not fail for every natural number.
+
+    The `prop`-valued variant of
+    `FStar.IndefiniteDescription.stronger_markovs_principle`. *)
 val stronger_markovs_principle_prop (p: (nat -> GTot prop))
     : Ghost nat (requires (~(forall (n: nat). ~(p n)))) (ensures (fun n -> p n))

@@ -52,24 +52,54 @@ module FStar.Real
   always been. The construction is a dependency of [FStar.Real.fst] only.
 *)
 
+(*| The real numbers, as a logical (erasable) type for specifications and proofs.
+
+    Literals are written with an `R` suffix, as in `1.0R`. The operations of this module are interpreted by the SMT encoding as Z3's native theory of real arithmetic, so goals in the theory of ordered fields are usually discharged automatically. That identification with Z3's reals is an assumption of the encoding; underneath, `FStar.Real.fst` defines `real` and its operations as the Dedekind reals of `FStar.Real.Dedekind`, which shows the assumed theory has a model and provides the completeness results `FStar.Real.lub` and `FStar.Real.archimedean`.
+
+    `real` is erasable: there is no extraction, so any computation that observes a real must be ghost or a proposition.
+
+    ```fstar
+    let _ = assert (1.0R +. 1.0R == 2.0R)
+    let _ = assert (forall (x:real). x >. 0.0R ==> x /. 2.0R <. x)
+    ``` *)
 [@@erasable]
 val real : Type0
 
+(*| The embedding of the integers into the reals.
+
+    When its argument is an integer literal, the normalizer folds it to the corresponding real literal. *)
 val of_int : int -> Tot real
 
+(*| Addition of reals, interpreted by Z3's real addition. *)
 val ( +. ) : real -> real -> Tot real
+(*| Subtraction of reals, interpreted by Z3's real subtraction. *)
 val ( -. ) : real -> real -> Tot real
+(*| Multiplication of reals, interpreted by Z3's real multiplication. *)
 val ( *. ) : real -> real -> Tot real
+(*| Division of reals; the divisor must be provably different from `0.0R`.
+
+    Interpreted by Z3's real division. *)
 val ( /. ) : real -> d:real{d =!= 0.0R} -> Tot real
 
+(*| Strict order on reals, `x >. y`, as a proposition.
+
+    Not a boolean: comparisons of reals cannot be computed. *)
 val ( >.  ) : real -> real -> prop
+(*| Non-strict order on reals, `x >=. y`, as a proposition. *)
 val ( >=. ) : real -> real -> prop
 
+(*| Strict order on reals, `x <. y`, as a proposition.
+
+    Not a boolean: comparisons of reals cannot be computed. *)
 val ( <.  ) : real -> real -> prop
+(*| Non-strict order on reals, `x <=. y`, as a proposition. *)
 val ( <=. ) : real -> real -> prop
 
+(*| The real `0`, defined as `of_int 0`. *)
 let zero : real = of_int 0
+(*| The real `1`, defined as `of_int 1`. *)
 let one  : real = of_int 1
+(*| The real `2`, defined as `of_int 2`. *)
 let two  : real = of_int 2
 
 (**** Completeness *)
@@ -83,20 +113,28 @@ let two  : real = of_int 2
 /// field, and it is what [FStar.Math.Sqrt] uses to define a square root
 /// without assuming one.
 
-/// Sets of reals, as predicates.
+(*| Sets of reals, represented as predicates `real -> prop`. *)
 let rset = real -> prop
 
+(*| `b` is an upper bound of the set `s`: every member `x` of `s` satisfies `x <=. b`. *)
 let is_upper_bound (s:rset) (b:real) : prop = forall (x:real). s x ==> x <=. b
+(*| The set `s` has some upper bound. *)
 let is_bounded_above (s:rset) : prop = exists (b:real). is_upper_bound s b
+(*| The set `s` has at least one member. *)
 let is_nonempty (s:rset) : prop = exists (x:real). s x
+(*| `b` is the least upper bound of `s`: an upper bound of `s` that is `<=.` every other upper bound. *)
 let is_lub (s:rset) (b:real) : prop =
   is_upper_bound s b /\ (forall (c:real). is_upper_bound s c ==> b <=. c)
 
-/// The least upper bound of a nonempty, bounded-above set of reals.
+(*| The least upper bound of a nonempty set of reals that is bounded above.
+
+    This is completeness, the property that distinguishes the reals from other ordered fields. Z3's theory of reals does not include it, so it cannot be obtained by SMT; here it is a theorem, transferred from `FStar.Real.Dedekind.lub`. `FStar.Math.Sqrt` uses it to define a square root without an axiom. Ghost, since the bound is chosen classically. *)
 val lub (s:rset)
   : Ghost real
       (requires is_nonempty s /\ is_bounded_above s)
       (ensures  fun b -> is_lub s b)
 
-/// Every real is dominated by a natural number.
+(*| Archimedes' property: every real is strictly below some natural number `of_int n`.
+
+    Proved from the Dedekind construction, `FStar.Real.Dedekind.archimedean`. *)
 val archimedean (x:real) : Lemma (exists (n:nat). x <. of_int n)

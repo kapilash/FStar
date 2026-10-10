@@ -26,15 +26,41 @@ module PropExt = FStar.PropositionalExtensionality
 
 (** Definition of a monoid *)
 
+(*| States that `u` is a right identity for `mult`: `mult x u == x` for all `x`.
+
+    A quantified `prop` with SMT pattern `mult x u`; used as a field of
+    `FStar.Algebra.Monoid.monoid`. *)
 let right_unitality_lemma (m:Type) (u:m) (mult:m -> m -> m) =
   forall (x:m). {:pattern (x `mult` u)} x `mult` u == x
 
+(*| States that `u` is a left identity for `mult`: `mult u x == x` for all `x`.
+
+    A quantified `prop` with SMT pattern `mult u x`; used as a field of
+    `FStar.Algebra.Monoid.monoid`. *)
 let left_unitality_lemma (m:Type) (u:m) (mult:m -> m -> m) =
   forall (x:m). {:pattern (u `mult` x)} u `mult` x == x
 
+(*| States that `mult` is associative: `mult (mult x y) z == mult x (mult y z)`
+    for all `x`, `y` and `z`.
+
+    A quantified `prop` with SMT pattern `mult (mult x y) z`; used as a field of
+    `FStar.Algebra.Monoid.monoid`. *)
 let associativity_lemma (m:Type) (mult:m -> m -> m) =
   forall (x y z:m). {:pattern (x `mult` y `mult` z)} x `mult` y `mult` z == x `mult` (y `mult` z)
 
+(*| A monoid on `m`, with laws up to propositional equality `==`.
+
+    The single constructor `Monoid` has the fields:
+
+    - `unit`: the neutral element.
+    - `mult`: the binary operation.
+    - `right_unitality`: a proof of `FStar.Algebra.Monoid.right_unitality_lemma`.
+    - `left_unitality`: a proof of `FStar.Algebra.Monoid.left_unitality_lemma`.
+    - `associativity`: a proof of `FStar.Algebra.Monoid.associativity_lemma`.
+
+    The laws are squashed propositions; build a monoid with
+    `FStar.Algebra.Monoid.intro_monoid`. For commutative monoids, see
+    `FStar.Algebra.CommMonoid.cm` and `FStar.Algebra.CommMonoid.Equiv.cm`. *)
 unopteq
 type monoid (m:Type) =
   | Monoid :
@@ -46,6 +72,10 @@ type monoid (m:Type) =
     monoid m
 
 
+(*| Builds a `FStar.Algebra.Monoid.monoid` from a unit and an operation, given
+    that the three monoid laws hold.
+
+    The result has exactly the given `unit` and `mult`. *)
 let intro_monoid (m:Type) (u:m) (mult:m -> m -> m)
   : Pure (monoid m)
     (requires (right_unitality_lemma m u mult /\ left_unitality_lemma m u mult /\ associativity_lemma m mult))
@@ -56,16 +86,22 @@ let intro_monoid (m:Type) (u:m) (mult:m -> m -> m)
 
 (** Some monoid structures *)
 
+(*| The monoid of natural numbers under addition, with unit `0`. *)
 let nat_plus_monoid : monoid nat =
   let add (x y : nat) : nat = x + y in
   intro_monoid nat 0 add
 
+(*| The monoid of integers under addition, with unit `0`. *)
 let int_plus_monoid : monoid int =
   intro_monoid int 0 (+)
 
 (* let int_mul_monoid : monoid int = *)
 (*   intro_monoid int 1 op_Star *)
 
+(*| The monoid of propositions under conjunction `p /\ q`, with unit `True`.
+
+    The laws hold with `==` thanks to propositional extensionality
+    (`FStar.PropositionalExtensionality`). *)
 let conjunction_monoid : monoid prop =
   let u : prop = singleton True in
   let mult (p q : prop) : prop = p /\ q in
@@ -94,6 +130,10 @@ let conjunction_monoid : monoid prop =
   intro_monoid prop u mult
 
 
+(*| The monoid of propositions under disjunction `p \/ q`, with unit `False`.
+
+    The laws hold with `==` thanks to propositional extensionality
+    (`FStar.PropositionalExtensionality`). *)
 let disjunction_monoid : monoid prop =
   let u : prop = singleton False in
   let mult (p q : prop) : prop = p \/ q in
@@ -121,18 +161,25 @@ let disjunction_monoid : monoid prop =
   assert (associativity_lemma prop mult) ;
   intro_monoid prop u mult
 
+(*| The monoid of booleans under `&&`, with unit `true`. *)
 let bool_and_monoid : monoid bool =
   let and_ b1 b2 = b1 && b2 in
   intro_monoid bool true and_
 
+(*| The monoid of booleans under `||`, with unit `false`. *)
 let bool_or_monoid : monoid bool =
   let or_ b1 b2 = b1 || b2 in
   intro_monoid bool false or_
 
+(*| The monoid of booleans under exclusive or, with unit `false`. *)
 let bool_xor_monoid : monoid bool =
   let xor b1 b2 = (b1 || b2) && not (b1 && b2) in
   intro_monoid bool false xor
 
+(*| Lifts a monoid on `a` to `option a`, with unit `Some m.unit`.
+
+    Two `Some` values multiply as in `m`; any product involving `None` is
+    `None`, so `None` is absorbing. *)
 let lift_monoid_option (#a:Type) (m:monoid a) : monoid (option a) =
   let mult (x y:option a) =
     match x, y with
@@ -143,18 +190,29 @@ let lift_monoid_option (#a:Type) (m:monoid a) : monoid (option a) =
 
 (* Definition of a morphism of monoid *)
 
+(*| States that `f` maps the unit of `ma` to the unit of `mb`. *)
 let monoid_morphism_unit_lemma (#a #b:Type) (f:a -> b) (ma:monoid a) (mb:monoid b) =
   f (Monoid?.unit ma) == Monoid?.unit mb
 
+(*| States that `f` commutes with multiplication: `mb.mult (f x) (f y) == f (ma.mult x y)`
+    for all `x` and `y`. *)
 let monoid_morphism_mult_lemma (#a #b:Type) (f:a -> b) (ma:monoid a) (mb:monoid b) =
   forall (x y:a). Monoid?.mult mb (f x) (f y) == f (Monoid?.mult ma x y)
 
+(*| A proof that `f` is a monoid morphism from `ma` to `mb`.
+
+    The single constructor `MonoidMorphism` has the squashed fields `unit`
+    (`FStar.Algebra.Monoid.monoid_morphism_unit_lemma`) and `mult`
+    (`FStar.Algebra.Monoid.monoid_morphism_mult_lemma`). Build one with
+    `FStar.Algebra.Monoid.intro_monoid_morphism`. *)
 type monoid_morphism (#a #b:Type) (f:a -> b) (ma:monoid a) (mb:monoid b) =
   | MonoidMorphism :
     unit:squash (monoid_morphism_unit_lemma f ma mb) ->
     mult:squash (monoid_morphism_mult_lemma f ma mb) ->
     monoid_morphism f ma mb
 
+(*| Builds a `FStar.Algebra.Monoid.monoid_morphism` for `f` from proofs that it
+    preserves the unit and multiplication. *)
 let intro_monoid_morphism (#a #b:Type) (f:a -> b) (ma:monoid a) (mb:monoid b)
   : Pure (monoid_morphism f ma mb)
     (requires (monoid_morphism_unit_lemma f ma mb /\ monoid_morphism_mult_lemma f ma mb))
@@ -162,9 +220,18 @@ let intro_monoid_morphism (#a #b:Type) (f:a -> b) (ma:monoid a) (mb:monoid b)
 =
   MonoidMorphism () ()
 
+(*| The inclusion of `nat` into `int`.
+
+    It is a monoid morphism from `FStar.Algebra.Monoid.nat_plus_monoid` to
+    `FStar.Algebra.Monoid.int_plus_monoid`; the module checks this. *)
 let embed_nat_int (n:nat) : int = n
 let _ = intro_monoid_morphism embed_nat_int nat_plus_monoid int_plus_monoid
 
+(*| Propositional negation `~p`, as a function on `prop`.
+
+    The module checks that it is a monoid morphism from
+    `FStar.Algebra.Monoid.conjunction_monoid` to
+    `FStar.Algebra.Monoid.disjunction_monoid` and back (De Morgan's laws). *)
 let neg (p:prop) : prop = ~p
 let _ =
   assert (neg True <==> False) ;
@@ -188,12 +255,20 @@ let _ =
 
 (* Definition of a left action *)
 
+(*| States the compatibility of an action with multiplication:
+    `act (mult x x') y == act x (act x' y)` for all `x`, `x'` and `y`. *)
 let mult_act_lemma (m a:Type) (mult:m -> m -> m) (act:m -> a -> a) =
   forall (x x':m) (y:a). (x `mult` x') `act` y == x `act` (x' `act` y)
 
+(*| States that the unit acts trivially: `act u y == y` for all `y`. *)
 let unit_act_lemma (m a:Type) (u:m) (act:m -> a -> a) =
   forall (y:a). u `act` y == y
 
+(*| A left action of the monoid `mm` on the type `a`.
+
+    The single constructor `LAct` has the fields `act`, the action, and the
+    squashed laws `mult_lemma` (`FStar.Algebra.Monoid.mult_act_lemma`) and
+    `unit_lemma` (`FStar.Algebra.Monoid.unit_act_lemma`). *)
 unopteq
 type left_action (#m:Type) (mm:monoid m) (a:Type) =
   | LAct :
@@ -202,6 +277,10 @@ type left_action (#m:Type) (mm:monoid m) (a:Type) =
     unit_lemma: squash (unit_act_lemma m a (Monoid?.unit mm) act) ->
     left_action mm a
 
+(*| States that `f` is equivariant between the left actions `la` and `lb`, along
+    `mf`: `lb.act (mf g) (f x) == f (la.act g x)` for all `g` and `x`.
+
+    `mf` is meant to be a monoid morphism, but the property does not require it. *)
 let left_action_morphism
     (#a #b #ma #mb:Type)
     (f:a -> b)

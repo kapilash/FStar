@@ -23,14 +23,24 @@ open FStar.Math.Euclid
 
 #set-options "--fuel 0 --ifuel 0"
 
+(*| Integer power `a` to the `k`, by repeated multiplication; `pow a 0` is `1`.
+
+    Unrelated to the real power `FStar.Math.Pow.pow`. See also
+    `FStar.Math.Lib.powx`. *)
 let rec pow (a:int) (k:nat) : int =
   if k = 0 then 1
   else a * pow a (k - 1)
 
+(*| Fermat's little theorem: for a prime `p`, `pow a p % p == a % p`. *)
 val fermat (p:int{is_prime p}) (a:int) : Lemma (pow a p % p == a % p)
 
+(*| A factor that is nonzero modulo a prime `p` can be cancelled from a
+    congruence: if `(a * c) % p = (b * c) % p` and `c % p <> 0` then
+    `a % p = b % p`. *)
 val mod_mult_congr (p:int{is_prime p}) (a b c:int) : Lemma
   (requires (a * c) % p = (b * c) % p /\ c % p <> 0)
   (ensures  a % p = b % p)
 
+(*| Fermat's little theorem, usual form: if `a % p <> 0` for a prime `p` then
+    `pow a (p - 1) % p == 1`. *)
 val fermat_alt (p:int{is_prime p}) (a:int{a % p <> 0}) : Lemma (pow a (p - 1) % p == 1)

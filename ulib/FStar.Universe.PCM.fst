@@ -21,6 +21,13 @@ open FStar.PCM
 open FStar.Universe
 open FStar.Classical.Sugar
 
+(*| Lifts a PCM on `a` to a PCM on `FStar.Universe.raise_t a`, in a higher
+    universe.
+
+    Composability, the operation, the unit and `refine` are those of `p`,
+    applied through `FStar.Universe.downgrade_val` and
+    `FStar.Universe.raise_val`. Frame-preserving updates lift with
+    `FStar.Universe.PCM.raise_frame_preserving_upd`. *)
 let raise (#a:Type) (p:pcm a)
   : pcm (raise_t u#a u#b a)
   = {
@@ -36,6 +43,9 @@ let raise (#a:Type) (p:pcm a)
       refine = (fun x -> p.refine (downgrade_val x));
     }
 
+(*| Lifts a frame-preserving update from `x` to `y` for `p` to a
+    frame-preserving update from `raise_val x` to `raise_val y` for
+    `FStar.Universe.PCM.raise p`. *)
 let raise_frame_preserving_upd (#a:Type u#a) (#p:pcm a) (#x #y:a) (f:frame_preserving_upd p x y)
   : frame_preserving_upd (raise u#a u#b p) (raise_val u#a u#b x) (raise_val u#a u#b y)
   = fun v ->

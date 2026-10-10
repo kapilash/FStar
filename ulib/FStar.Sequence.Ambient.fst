@@ -39,6 +39,24 @@ module FStar.Sequence.Ambient
 
 open FStar.Sequence.Base
 
+(*| Brings `FStar.Sequence.Base.all_seq_facts` into the SMT context whenever
+    a sequence type is mentioned, in modules that depend on
+    `FStar.Sequence.Ambient`.
+
+    Triggered automatically on `FStar.Sequence.Base.seq a`, so the facts are
+    available in any proof that involves a sequence, including the
+    refinements in the types of `index`, `take` and `drop`; nothing needs to
+    be called. The module `FStar.Sequence` includes this one:
+
+    ```fstar
+    open FStar.Sequence
+    let build_then_index (s: seq int)
+      : Lemma ((s $:: 0) $@ length s == 0)
+      = ()
+    ```
+
+    To use the facts only in a few proofs, depend on `FStar.Sequence.Base`
+    alone and call `FStar.Sequence.Base.all_seq_facts_lemma`. *)
 let all_seq_facts_ambient (a:Type u#a)
 : Lemma
   (ensures all_seq_facts u#a)

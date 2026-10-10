@@ -1,0 +1,5 @@
+paragraph
+  text "Named as in "
+  link "https://ocaml.org/api/List.html"
+    text "OCaml"
+  text ". A literal * is escaped."

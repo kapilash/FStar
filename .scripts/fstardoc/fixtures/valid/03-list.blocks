@@ -1,0 +1,11 @@
+paragraph
+  text "Variants:"
+list
+  item
+    code "map"
+    text " runs in "
+    code "ML"
+    text "."
+  item
+    code "mapTot"
+    text " is total."

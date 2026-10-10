@@ -12,6 +12,16 @@ python3 fstardoc.py {path to fst/fsti file}
 
 # Consumers of `--export_docs`
 
+To write documentation for ulib, see [AUTHORING.md](AUTHORING.md). The
+`ulib_docs.py` script inventories the library, reports coverage, and checks
+completed modules against `ulib-docs-status.json`. The `fixtures/` directory
+holds doc payloads shared with the future verified Markdown parser.
+[CONSUMERS.md](CONSUMERS.md) lists what the website and the MCP server must
+do with the documentation, and how the prototypes below measure up.
+[ULIB_SOURCE_ISSUES.md](ULIB_SOURCE_ISSUES.md) lists bugs and stale comments
+found in ulib while documenting it; only the `FStar.Matrix` proof fragility
+is fixed.
+
 `fstardoc.py` above reads F* source directly. The four scripts below
 instead read the versioned JSON that `fstar.exe --export_docs` emits from
 a checked file, and never open a checked file themselves — the boundary

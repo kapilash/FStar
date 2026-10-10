@@ -36,23 +36,43 @@ module FStar.Sequence.Seq
 module Seq = FStar.Seq
 module Sequence = FStar.Sequence.Base
 
+(*| Converts an `FStar.Seq.Base.seq` into an `FStar.Sequence.Base.seq` with
+    the same elements in the same order.
+
+    `FStar.Sequence.Seq.related_sequence_of_seq` states the result, and
+    `FStar.Sequence.Seq.seq_of_sequence` is its inverse. *)
 val sequence_of_seq (#a:Type) (s:Seq.seq a) : Sequence.seq a
 
+(*| Converts an `FStar.Sequence.Base.seq` into an `FStar.Seq.Base.seq` with
+    the same elements in the same order.
+
+    `FStar.Sequence.Seq.related_seq_of_sequence` states the result, and
+    `FStar.Sequence.Seq.sequence_of_seq` is its inverse. *)
 val seq_of_sequence (#a:Type) (s:Sequence.seq a) : Seq.seq a
 
+(*| Holds when a `FStar.Seq.Base.seq` and a `FStar.Sequence.Base.seq` have
+    the same length and the same element at each index. *)
 let related #a (s:Seq.seq a) (s':Sequence.seq a) =
   Seq.length s == Sequence.length s' /\
   (forall i.{:pattern (Seq.index s i) \/ (Sequence.index s' i)}
       Seq.index s i == Sequence.index s' i)
 
+(*| States that `FStar.Sequence.Seq.sequence_of_seq s` is related to `s`:
+    same length and same elements. *)
 val related_sequence_of_seq (#a:Type) (s:Seq.seq a)
   : Lemma (related s (sequence_of_seq s))
 
+(*| States that `FStar.Sequence.Seq.seq_of_sequence s` is related to `s`:
+    same length and same elements. *)
 val related_seq_of_sequence (#a:Type) (s:Sequence.seq a)
   : Lemma (related (seq_of_sequence s) s)
 
+(*| States that converting an `FStar.Seq.Base.seq` to an
+    `FStar.Sequence.Base.seq` and back gives the original sequence. *)
 val seq_of_sequence_of_seq (#a:Type) (s:Seq.seq a)
   : Lemma (seq_of_sequence (sequence_of_seq s) == s)
 
+(*| States that converting an `FStar.Sequence.Base.seq` to an
+    `FStar.Seq.Base.seq` and back gives the original sequence. *)
 val sequence_of_seq_of_sequence (#a:Type) (s:Sequence.seq a)
   : Lemma (sequence_of_seq (seq_of_sequence s) == s)

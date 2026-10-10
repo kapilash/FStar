@@ -28,26 +28,35 @@ module CE = FStar.Algebra.CommMonoid.Equiv
 
 open FStar.IntegerIntervals 
 
-(* This constructs a generator function that has its arguments in reverse 
-   order. Useful when reasoning about nested folds, transposed matrices, etc. 
-   
-   Note how this utility is more general than transposed_matrix_gen 
-   found in FStar.Seq.Matrix -- but for zero-based domains, latter is 
-   more convenient. *)
+(*| Swaps the two arguments of a two-argument function on integer ranges:
+    the result `f` satisfies `f j i == gen i j`.
+
+    Useful to state the exchange of nested folds and transposition of matrices.
+    For zero-based domains, `FStar.Matrix.transposed_matrix_gen` is more
+    convenient. *)
 let transpose_generator #c (#m0 #mk: int)
                           (#n0 #nk: int)
                           (gen: ifrom_ito m0 mk -> ifrom_ito n0 nk -> c)
   : (f: (ifrom_ito n0 nk -> ifrom_ito m0 mk -> c) { forall i j. f j i == gen i j })
   = fun j i -> gen i j
   
+(*| Nested fold of a two-argument function `g` over the ranges `[a0, ak]` and
+    `[b0, bk]`: the outer fold over `i` of the inner fold over `j` of `g i j`.
+
+    Built from `FStar.Algebra.CommMonoid.Fold.fold`. See
+    `FStar.Algebra.CommMonoid.Fold.Nested.double_fold_transpose_lemma` for
+    swapping the order of summation. *)
 let double_fold #c #eq #a0 (#ak: not_less_than a0) #b0 (#bk:not_less_than b0)
                 (cm: CE.cm c eq)
                 (g: ifrom_ito a0 ak -> ifrom_ito b0 bk -> c) = 
   CF.fold cm a0 ak (fun (i: ifrom_ito a0 ak) -> CF.fold cm b0 bk (g i))  
 
 
-(* Most general form of nested fold swap theorem. Here we prove that we can 
-   exchange the order of nested foldings over any suitable generator function. *)
+(*| Proves that the order of a nested fold can be exchanged: folding over
+    `i` then `j` is equivalent, under `eq`, to folding over `j` then `i`.
+
+    The finite version of Fubini's theorem for commutative monoids, stated with
+    `FStar.Algebra.CommMonoid.Fold.Nested.transpose_generator`. *)
 val double_fold_transpose_lemma (#c:_) (#eq: _)
                                 (#m0: int) (#mk: not_less_than m0)
                                 (#n0: int) (#nk: not_less_than n0)

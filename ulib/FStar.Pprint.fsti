@@ -32,79 +32,115 @@ open FStar.Float64
     building documents. On top of these combinators, higher-level combinators
     can be defined: see {!PPrintCombinators}. *)
 
-(** This is the abstract type of documents. *)
+(*| The abstract type of pretty-printer documents.
+
+    A document describes text together with layout choices (where lines may
+    break, how much to indent); `FStar.Pprint.render` or
+    `FStar.Pprint.pretty_string` turns it into a string. Documents are built in
+    memory before they are rendered.
+
+    `FStar.Pprint` is an interface to François Pottier's OCaml PPrint library.
+    Every operation in it is an assumed `val` with no F\* definition and no
+    lemmas: the layout behaviour described in these docs is that of the
+    library, not something F\* specifies or can prove. Documents cannot be
+    inspected or compared in F\*. *)
 new
 val document : Type0
 
 (** The following basic (low-level) combinators allow constructing documents. *)
 
-(** [empty] is the empty document. *)
+(*| The empty document, which renders as nothing. *)
 val empty: document
 
-(** [doc_of_char c] is a document that consists of the single character [c]. This
-    character must not be a newline. *)
+(*| A document consisting of a single character, which must not be a newline.
+
+    Assumed primitive. Note that the OCaml implementation in the F\* library
+    builds it with `PPrint.OCaml.char`, which prints the character as an OCaml
+    character literal, quotes included. Use `FStar.Pprint.doc_of_string` for
+    plain text. *)
 val doc_of_char: char -> document
 
-(** [doc_of_string s] is a document that consists of the string [s]. This string must
-    not contain a newline. *)
+(*| A document consisting of the string `s`, which must not contain a newline.
+
+    The newline restriction is not checked by the type; use
+    `FStar.Pprint.arbitrary_string` for text that may contain newlines. See
+    also `FStar.Pprint.utf8string` for strings whose display width differs
+    from their byte length.
+
+    ```fstar
+    let call_doc (f: string) (args: list string) : FStar.Pprint.document =
+      let open FStar.Pprint in
+      group (doc_of_string f ^^ parens (separate_map (comma ^^ break_ 1) doc_of_string args))
+    ``` *)
 val doc_of_string: string -> document
 
-(** [doc_of_bool b] is a document that consists of the boolean [b]. *)
+(*| A document consisting of the boolean `b`, written `true` or `false`. *)
 val doc_of_bool: bool -> document
 
-(** [substring s ofs len] is a document that consists of the portion of the
-    string [s] delimited by the offset [ofs] and the length [len]. This
-    portion must contain a newline. *)
+(*| A document consisting of the portion of `s` that starts at offset `ofs` and has length `len`.
+
+    The portion must not contain a newline, and the offset and length must
+    designate a valid portion of `s`; neither condition is checked by the type. *)
 val substring: string -> int -> int -> document
 
-(** [fancystring s apparent_length] is a document that consists of the string
-    [s]. This string must not contain a newline. The string may contain fancy
-    characters: color escape characters, UTF-8 or multi-byte characters,
-    etc. Thus, its apparent length (which measures how many columns the text
-    will take up on screen) differs from its length in bytes. *)
+(*| A document consisting of the string `s`, whose apparent length is given explicitly.
+
+    The string must not contain a newline. It may contain fancy characters
+    (color escape sequences, UTF-8 or other multi-byte characters), so the
+    number of columns it occupies on screen, `apparent_length`, may differ from
+    its length in bytes; the layout engine uses the apparent length. *)
 val fancystring: string -> int -> document
 
-(** [fancysubstring s ofs len apparent_length] is a document that consists of
-    the portion of the string [s] delimited by the offset [ofs] and the length
-    [len]. This portion must not contain a newline. The string may contain fancy
-    characters. *)
+(*| A document consisting of a portion of `s`, given by offset and length, with an explicit apparent length.
+
+    The combination of `FStar.Pprint.substring` and
+    `FStar.Pprint.fancystring`: the portion must not contain a newline, and the
+    last argument is the number of columns it occupies on screen. *)
 val fancysubstring : string -> int -> int -> int -> document
 
-(** [utf8string s] is a document that consists of the UTF-8-encoded string [s].
-    This string must not contain a newline. *)
+(*| A document consisting of the UTF-8-encoded string `s`, which must not contain a newline.
+
+    Unlike `FStar.Pprint.doc_of_string`, its width is measured in UTF-8 code
+    points rather than bytes. *)
 val utf8string: string -> document
 
-(** [hardline] is a forced newline document. This document forces all enclosing
-    groups to be printed in non-flattening mode. In other words, any enclosing
-    groups are dissolved. *)
+(*| A forced newline.
+
+    A `hardline` forces every enclosing `FStar.Pprint.group` to be printed in
+    non-flattening mode, that is, it dissolves all enclosing groups. *)
 val hardline: document
 
-(** [blank n] is a document that consists of [n] blank characters. *)
+(*| A document consisting of `n` blank characters. *)
 val blank: int -> document
 
-(** [break_ n] is a document which consists of either [n] blank characters,
-    when forced to display on a single line, or a single newline character,
-    otherwise. Note that there is no choice at this point: choices are encoded
-    by the [group] combinator. *)
+(*| A potential line break: `n` blanks when printed flat, a newline otherwise.
+
+    `break_` itself makes no choice: whether it is printed flat is decided by
+    the enclosing `FStar.Pprint.group`. Called `break` in the OCaml library. *)
 val break_: int -> document
 
-(** [doc1 ^^ doc2] is the concatenation of the documents [doc1] and [doc2]. *)
+(*| Concatenation of two documents, with no space or break in between. *)
 val ( ^^ ) : document -> document -> document
-(** [x ^/^ y] separates x and y with a breakable space. It is a short-hand for
-    [x ^^ break 1 ^^ y] *)
+(*| Concatenation of two documents separated by a breakable space.
+
+    `x ^/^ y` is short for `x ^^ break_ 1 ^^ y`: a space when printed flat, a
+    newline otherwise. *)
 val ( ^/^ ) : document -> document -> document
 
-(** [nest j doc] is the document [doc], in which the indentation level has
-    been increased by [j], that is, in which [j] blanks have been inserted
-    after every newline character. Read this again: indentation is inserted
-    after every newline character. No indentation is inserted at the beginning
-    of the document. *)
+(*| Increases the indentation level of a document by `j`.
+
+    Indentation is inserted after every newline character in the document: `j`
+    blanks are added after each newline. No indentation is inserted at the
+    beginning of the document. See also `FStar.Pprint.align` and
+    `FStar.Pprint.hang`. *)
 val nest: int -> document -> document
 
-(** [group doc] encodes a choice. If possible, then the entire document [group
-    doc] is rendered on a single line. Otherwise, the group is dissolved, and
-    [doc] is rendered. There might be further groups within [doc], whose
-    presence will lead to further choices being explored. *)
+(*| Introduces a layout choice: print the whole document on one line if possible.
+
+    If the entire document fits on the current line, it is printed flat (every
+    `FStar.Pprint.break_` becomes blanks). Otherwise the group is dissolved and
+    the document is printed as is, where nested groups lead to further
+    choices. A `FStar.Pprint.hardline` inside makes flattening impossible. *)
 val group: document -> document
 
 // (** [column f] is the document obtained by applying the function [f] to the
@@ -126,11 +162,10 @@ val group: document -> document
 //     [bol + column]. *)
 // val position : (int -> int -> int -> document) -> document
 
-(** [ifflat doc1 doc2] is rendered as [doc1] if part of a group that can be
-    successfully flattened, and is rendered as [doc2] otherwise. Use this
-    operation with caution. Because the pretty-printer is free to choose
-    between [doc1] and [doc2], these documents should be semantically
-    equivalent. *)
+(*| Renders as `doc1` inside a group that is printed flat, and as `doc2` otherwise.
+
+    Use with caution: because the printer is free to choose either document,
+    the two should be semantically equivalent. *)
 val ifflat: document -> document -> document
 
 // SI: purposely commented-out for now.
@@ -158,215 +193,262 @@ val ifflat: document -> document -> document
 
 (** The following constant documents consist of a single character. *)
 
+(*| A document consisting of a left parenthesis `(`. *)
 val lparen: document
+(*| A document consisting of a right parenthesis `)`. *)
 val rparen: document
+(*| A document consisting of a left angle bracket `<`. *)
 val langle: document
+(*| A document consisting of a right angle bracket `>`. *)
 val rangle: document
+(*| A document consisting of a left brace `{`. *)
 val lbrace: document
+(*| A document consisting of a right brace `}`. *)
 val rbrace: document
+(*| A document consisting of a left square bracket `[`. *)
 val lbracket: document
+(*| A document consisting of a right square bracket `]`. *)
 val rbracket: document
+(*| A document consisting of a single quote `'`. *)
 val squote: document
+(*| A document consisting of a double quote `"`. *)
 val dquote: document
+(*| A document consisting of a backquote (grave accent). *)
 val bquote: document
+(*| A document consisting of a semicolon `;`. *)
 val semi: document
+(*| A document consisting of a colon `:`. *)
 val colon: document
+(*| A document consisting of a comma `,`. *)
 val comma: document
+(*| A document consisting of a single space. *)
 val space: document
+(*| A document consisting of a dot `.`. *)
 val dot: document
+(*| A document consisting of a hash sign `#`. *)
 val sharp: document
+(*| A document consisting of a slash `/`. *)
 val slash: document
+(*| A document consisting of a single backslash character. *)
 val backslash: document
+(*| A document consisting of an equals sign `=`. *)
 val equals: document
+(*| A document consisting of a question mark `?`. *)
 val qmark: document
+(*| A document consisting of a tilde `~`. *)
 val tilde: document
+(*| A document consisting of an at sign `@`. *)
 val at: document
+(*| A document consisting of a percent sign `%`. *)
 val percent: document
+(*| A document consisting of a dollar sign `$`. *)
 val dollar: document
+(*| A document consisting of a caret `^`. *)
 val caret: document
+(*| A document consisting of an ampersand `&`. *)
 val ampersand: document
+(*| A document consisting of an asterisk `*`. *)
 val star: document
+(*| A document consisting of a plus sign `+`. *)
 val plus: document
+(*| A document consisting of a minus sign `-`. *)
 val minus: document
+(*| A document consisting of an underscore `_`. *)
 val underscore: document
+(*| A document consisting of an exclamation mark `!`. *)
 val bang: document
+(*| A document consisting of a vertical bar `|`. *)
 val bar: document
+(*| A document consisting of the arrow `->`. *)
 val rarrow: document
+(*| A document consisting of the long left arrow `<--`. *)
 val long_left_arrow: document
+(*| A document consisting of the left arrow `<-`. *)
 val larrow: document
 
 (** {1 Delimiters} *)
 
-(** [precede l x] is [l ^^ x]. *)
+(*| Places a document `l` before `x`: `precede l x` is `l ^^ x`. *)
 val precede: document -> document -> document
 
-(** [terminate r x] is [x ^^ r]. *)
+(*| Places a document `r` after `x`: `terminate r x` is `x ^^ r`. *)
 val terminate: document -> document -> document
 
-(** [enclose l r x] is [l ^^ x ^^ r]. *)
+(*| Encloses a document between two delimiters: `enclose l r x` is `l ^^ x ^^ r`.
+
+    No whitespace or line break is introduced. `FStar.Pprint.parens`,
+    `FStar.Pprint.brackets` and similar are specializations. *)
 val enclose: document -> document -> document -> document
 
 (** The following combinators enclose a document within a pair of delimiters.
     They are partial applications of [enclose]. No whitespace or line break is
     introduced. *)
 
+(*| Encloses a document in single quotes, with no whitespace or line break added. *)
 val squotes: document -> document
+(*| Encloses a document in double quotes, with no whitespace or line break added. *)
 val dquotes: document -> document
+(*| Encloses a document in backquotes, with no whitespace or line break added. *)
 val bquotes: document -> document
+(*| Encloses a document in braces `{` and `}`, with no whitespace or line break added. *)
 val braces: document -> document
+(*| Encloses a document in parentheses, with no whitespace or line break added. *)
 val parens: document -> document
+(*| Encloses a document in angle brackets `<` and `>`, with no whitespace or line break added. *)
 val angles: document -> document
+(*| Encloses a document in square brackets `[` and `]`, with no whitespace or line break added. *)
 val brackets: document -> document
 
 (** {1 Repetition} *)
 
-(** [twice doc] is the document obtained by concatenating two copies of
-    the document [doc]. *)
+(*| Concatenates two copies of a document. *)
 val twice: document -> document
 
-(** [repeat n doc] is the document obtained by concatenating [n] copies of
-    the document [doc]. *)
+(*| Concatenates `n` copies of a document. *)
 val repeat: int -> document -> document
 
 (** {1 Lists and options} *)
 
-(** [concat docs] is the concatenation of the documents in the list [docs] (with ^^). *)
+(*| Concatenates a list of documents with `FStar.Pprint.op_Hat_Hat`, adding no separator. *)
 val concat: list document -> document
 
-(** [separate sep docs] is the concatenation of the documents in the list
-    [docs]. The separator [sep] is inserted between every two adjacent
-    documents. *)
+(*| Concatenates a list of documents, inserting `sep` between every two adjacent documents.
+
+    See also `FStar.Pprint.separate_map`, `FStar.Pprint.separate2` and
+    `FStar.Pprint.flow`. *)
 val separate: document -> list document -> document
 
-(** [concat_map f xs] is equivalent to [concat (List.map f xs)]. *)
+(*| Maps each element of a list to a document and concatenates the results.
+
+    `concat_map f xs` is equivalent to `concat (List.map f xs)`. *)
 val concat_map: ('a -> document) -> list 'a -> document
 
-(** [separate_map sep f xs] is equivalent to [separate sep (List.map f xs)]. *)
+(*| Maps each element of a list to a document and concatenates the results with a separator.
+
+    `separate_map sep f xs` is equivalent to `separate sep (List.map f xs)`. *)
 val separate_map: document -> ('a -> document) -> list 'a -> document
 
-(** [separate2 sep last_sep docs] is the concatenation of the documents in the
-    list [docs]. The separator [sep] is inserted between every two adjacent
-    documents, except between the last two documents, where the separator
-    [last_sep] is used instead. *)
+(*| Concatenates a list of documents with a separator, using a different separator before the last one.
+
+    `sep` is inserted between every two adjacent documents except the last two,
+    which are separated by `last_sep` (as in "a, b and c"). *)
 val separate2: document -> document -> list document -> document
 
-(** [optional f None] is the empty document. [optional f (Some x)] is
-    the document [f x]. *)
+(*| Renders an optional value: the empty document for `None`, and `f x` for `Some x`. *)
 val optional: ('a -> document) -> option 'a -> document
 
 (** {1 Text} *)
 
-(** [lines s] is the list of documents obtained by splitting [s] at newline
-    characters, and turning each line into a document via [substring]. This
-    code is not UTF-8 aware. *)
+(*| Splits a string at newline characters and turns each line into a document.
+
+    Each line becomes a `FStar.Pprint.substring`; the newlines are dropped.
+    This is not UTF-8 aware. *)
 val lines: string -> list document
 
-(** [arbitrary_string s] is equivalent to [separate (break 1) (lines s)].
-    It is analogous to [string s], but is valid even if the string [s]
-    contains newline characters. *)
+(*| A document for a string that may contain newlines.
+
+    Equivalent to `separate (break_ 1) (lines s)`: each newline of `s` becomes
+    a potential line break, printed as a space when the enclosing group is
+    flat. Use it instead of `FStar.Pprint.doc_of_string` when `s` may contain
+    newlines. *)
 val arbitrary_string: string -> document
 
-(** [words s] is the list of documents obtained by splitting [s] at whitespace
-    characters, and turning each word into a document via [substring]. All
-    whitespace is discarded. This code is not UTF-8 aware. *)
+(*| Splits a string at whitespace and turns each word into a document.
+
+    All whitespace is discarded. This is not UTF-8 aware. Often combined with
+    `FStar.Pprint.flow` to typeset a paragraph. *)
 val words: string -> list document
 
-(** [split ok s] splits the string [s] before and after every occurrence of a
-    character that satisfies the predicate [ok]. The substrings thus obtained
-    are turned into documents, and a list of documents is returned. No
-    information is lost: the concatenation of the documents yields the
-    original string.  This code is not UTF-8 aware. *)
+(*| Splits a string before and after every character satisfying `ok`, giving a list of documents.
+
+    Each matching character becomes a document of its own. No information is
+    lost: concatenating the documents yields the original string. This is not
+    UTF-8 aware. *)
 val split: (char -> bool) -> string -> list document
 
-(** [flow sep docs] separates the documents in the list [docs] with the
-    separator [sep] and arranges for a new line to begin whenever a document
-    does not fit on the current line. This is useful for typesetting
-    free-flowing, ragged-right text. A typical choice of [sep] is [break b],
-    where [b] is the number of spaces that must be inserted between two
-    consecutive words (when displayed on the same line). *)
+(*| Separates a list of documents with `sep` and starts a new line whenever the next document does not fit.
+
+    Useful for free-flowing, ragged-right text. A typical separator is
+    `break_ b`, where `b` is the number of spaces between two consecutive words
+    on the same line. See also `FStar.Pprint.words`. *)
 val flow: document -> list document -> document
 
-(** [flow_map sep f docs] is equivalent to [flow sep (List.map f docs)]. *)
+(*| Maps each element of a list to a document and lays out the results with `FStar.Pprint.flow`.
+
+    `flow_map sep f xs` is equivalent to `flow sep (List.map f xs)`. *)
 val flow_map: document -> ('a -> document) -> list 'a -> document
 
-(** [url s] is a possible way of displaying the URL [s]. A potential line
-    break is inserted immediately before and immediately after every slash
-    and dot character. *)
+(*| A possible way of displaying a URL.
+
+    A potential line break is inserted immediately before and immediately after
+    every slash and dot character. *)
 val url: string -> document
 
 (** {1 Alignment and indentation} *)
 
-(** [align doc] increases the indentation level to reach the current
-    column. Thus, this document will be rendered within a box whose
-    upper left corner is the current position. *)
+(*| Sets the indentation level of a document to the current column.
+
+    The document is thus rendered within a box whose upper left corner is the
+    current position. See also `FStar.Pprint.hang` and `FStar.Pprint.nest`. *)
 val align: document -> document
 
-(* [hang n doc] is analogous to [align], but additionally indents
-   all lines, except the first one, by [n]. Thus, the text in the
-   box forms a hanging indent. *)
+(*| Like `FStar.Pprint.align`, but additionally indents every line except the first by `n`.
+
+    The text in the box forms a hanging indent. *)
 val hang: int -> document -> document
 
-(** [prefix n b left right] has the following flat layout: {[
-left right
-]}
-and the following non-flat layout:
-{[
-left
-  right
-]}
-The parameter [n] controls the nesting of [right] (when not flat).
-The parameter [b] controls the number of spaces between [left] and [right]
-(when flat).
- *)
+(*| Lays out `left` and `right` on one line if they fit, otherwise puts `right` on the next line, indented.
+
+    Flat layout: `left right`, with `b` spaces between them. Non-flat layout:
+    `left`, then a newline, then `right` nested by `n`. The choice is made by a
+    `FStar.Pprint.group` around the whole. *)
 val prefix: int -> int -> document -> document -> document
 
-(** [jump n b right] is equivalent to [prefix n b empty right]. *)
+(*| Lays out `right` after a potential line break: `jump n b right` is `prefix n b empty right`.
+
+    Flat, `right` is preceded by `b` spaces; otherwise it starts on a new line
+    nested by `n`. *)
 val jump: int -> int -> document -> document
 
-(** [infix n b middle left right] has the following flat layout: {[
-left middle right
-]}
-and the following non-flat layout: {[
-left middle
-  right
-]}
-The parameter [n] controls the nesting of [right] (when not flat).
-The parameter [b] controls the number of spaces between [left] and [middle]
-(always) and between [middle] and [right] (when flat).
-*)
+(*| Lays out a binary operator application `left middle right` on one line, or breaks after `middle`.
+
+    Flat layout: `left middle right`. Non-flat layout: `left middle` on one
+    line and `right` on the next, nested by `n`. `b` is the number of spaces
+    between `left` and `middle` (always) and between `middle` and `right`
+    (when flat). *)
 val infix: int -> int -> document -> document -> document -> document
 
-(** [surround n b opening contents closing] has the following flat layout: {[
-opening contents closing
-]}
-and the following non-flat layout: {[
-opening
-  contents
-closing
-]}
-The parameter [n] controls the nesting of [contents] (when not flat).
-The parameter [b] controls the number of spaces between [opening] and [contents]
-and between [contents] and [closing] (when flat).
-*)
+(*| Lays out `opening contents closing` on one line if they fit, otherwise on three lines with `contents` indented.
+
+    Flat layout: `opening contents closing`, with `b` spaces on each side of
+    `contents`. Non-flat layout: `opening`, `contents` and `closing` on
+    separate lines, `contents` nested by `n`. See also
+    `FStar.Pprint.soft_surround`. *)
 val surround: int -> int -> document -> document -> document -> document
 
-(** [soft_surround] is analogous to [surround], but involves more than one
-    group, so it offers possibilities other than the completely flat layout
-    (where [opening], [contents], and [closing] appear on a single line) and
-    the completely developed layout (where [opening], [contents], and
-    [closing] appear on separate lines). It tries to place the beginning of
-    [contents] on the same line as [opening], and to place [closing] on the
-    same line as the end of [contents], if possible.
-*)
+(*| Like `FStar.Pprint.surround`, but with intermediate layouts between fully flat and fully broken.
+
+    It uses more than one group: it tries to keep the beginning of `contents`
+    on the same line as `opening`, and `closing` on the same line as the end
+    of `contents`, when possible. *)
 val soft_surround: int -> int -> document -> document -> document -> document
 
-(** [surround_separate n b void opening sep closing docs] is equivalent to
-    [surround n b opening (separate sep docs) closing], except when the
-    list [docs] is empty, in which case it reduces to [void]. *)
+(*| Surrounds a separated list with delimiters, or produces `void` when the list is empty.
+
+    `surround_separate n b void opening sep closing docs` is
+    `surround n b opening (separate sep docs) closing` when `docs` is
+    nonempty, and `void` otherwise.
+
+    ```fstar
+    let block_doc (body: list FStar.Pprint.document) : FStar.Pprint.document =
+      let open FStar.Pprint in
+      surround_separate 2 1 (lbrace ^^ rbrace) lbrace (semi ^^ break_ 1) rbrace body
+    ``` *)
 val surround_separate: int -> int -> document -> document -> document -> document -> list document -> document
 
-(** [surround_separate_map n b void opening sep closing f xs] is equivalent to
-    [surround_separate n b void opening sep closing (List.map f xs)]. *)
+(*| Like `FStar.Pprint.surround_separate`, applied to the documents obtained by mapping `f` over a list.
+
+    Equivalent to `surround_separate n b void opening sep closing (List.map f xs)`. *)
 val surround_separate_map: int -> int -> document -> document -> document -> document -> ('a -> document) -> list 'a -> document
 
 (** {1 Short-hands} *)
@@ -384,9 +466,16 @@ val surround_separate_map: int -> int -> document -> document -> document -> doc
 // Expose underlying Renderer.pretty implementations (avoid inner modules).
 // [pretty_string] uses ToBuffer:RENDERER implementation;
 // [print_out_channel] uses the ToChannel:RENDERER one.
-(** Note: this exists in the underlying module, but userspace cannot really
-call it since we have no support for floats. See [render] below. *)
+(*| Renders a document to a string, given a ribbon fraction and a maximum line width.
+
+    The first argument is the ribbon fraction (the maximal fraction of the
+    line width occupied by non-indentation text) and the second the line width
+    in columns. A `float64` can be built with `FStar.Float64` (for example
+    `FStar.Float64.one`). `FStar.Pprint.render` uses default settings. *)
 val pretty_string : float64 -> int -> document -> string
 
-(** Render a document. Equivalent to [pretty_string 1.0 80]. *)
+(*| Renders a document to a string with default settings.
+
+    Equivalent to `pretty_string 1.0 80`: a ribbon fraction of 1.0 and a line
+    width of 80 columns. Assumed primitive, implemented in OCaml. *)
 val render : document -> string

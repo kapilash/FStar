@@ -36,13 +36,18 @@ private let dump m = if debugging () then dump m
 
 (***** Expression syntax *)
 
+(*| Variables of reflected monoid expressions: natural-number indices into a `FStar.Tactics.CanonCommMonoid.vmap`. *)
 let var : eqtype = nat
 
+(*| Reflected expressions of a commutative monoid, built by `FStar.Tactics.CanonCommMonoid.reification`.
+
+    `Unit` is the monoid unit, `Var x` is the opaque subterm stored at index `x` of the variable map, and `Mult e1 e2` is the monoid operation. `FStar.Tactics.CanonCommMonoid.mdenote` gives their meaning. *)
 type exp : Type =
   | Unit : exp
   | Var : var -> exp
   | Mult : exp -> exp -> exp
 
+(*| Renders a reflected monoid expression as a string, for debugging. *)
 let rec exp_to_string (e:exp) : string =
   match e with
   | Unit -> "Unit"
@@ -56,25 +61,36 @@ let rec exp_to_string (e:exp) : string =
 // (1) its denotation that should be treated abstractly (type a) and
 // (2) user-specified extra information depending on its term (type b)
 
+(*| Variable maps for monoid reflection: an association list from variables to pairs of a denotation in `a` and extra information in `b`, together with a default pair for unbound variables.
+
+    The denotation is treated abstractly by the canonizer. The extra information is computed by the user from the original term (see `FStar.Tactics.CanonCommMonoid.canon_monoid_with`) and lets a custom `FStar.Tactics.CanonCommMonoid.permute` choose the order of variables. *)
 let vmap (a b:Type) = list (var & (a&b)) & (a & b)
+(*| The variable map with no entries, whose default denotation is `xa` and default extra information is `xb`. *)
 let const (#a #b:Type) (xa:a) (xb:b) : vmap a b = [], (xa,xb)
+(*| Looks up the denotation of a variable in a variable map, returning the map's default denotation when the variable is unbound. *)
 let select (#a #b:Type) (x:var) (vm:vmap a b) : Tot a =
   match assoc #var #(a & b) x (fst vm) with
   | Some (a, _) -> a
   | _ -> fst (snd vm)
+(*| Looks up the user-supplied extra information of a variable in a variable map, returning the map's default when the variable is unbound. *)
 let select_extra (#a #b:Type) (x:var) (vm:vmap a b) : Tot b =
   match assoc #var #(a & b) x (fst vm) with
   | Some (_, b) -> b
   | _ -> snd (snd vm)
+(*| Adds a binding of variable `x` to denotation `xa` and extra information `xb` in front of a variable map, shadowing any earlier binding of `x`. *)
 let update (#a #b:Type) (x:var) (xa:a) (xb:b) (vm:vmap a b) : vmap a b =
   (x, (xa, xb))::fst vm, snd vm
 
+(*| Interprets a reflected expression in the commutative monoid `m`, reading variables from the variable map with `FStar.Tactics.CanonCommMonoid.select`. *)
 let rec mdenote (#a #b:Type) (m:cm a) (vm:vmap a b) (e:exp) : Tot a =
   match e with
   | Unit -> CM?.unit m
   | Var x -> select x vm
   | Mult e1 e2 -> CM?.mult m (mdenote m vm e1) (mdenote m vm e2)
 
+(*| Interprets a list of variables as their product in the commutative monoid `m`.
+
+    The empty list denotes the unit and a singleton denotes the variable alone, so no unit is added at the end. This is the meaning of the canonical forms produced by `FStar.Tactics.CanonCommMonoid.canon`. *)
 let rec xsdenote (#a #b:Type) (m:cm a) (vm:vmap a b) (xs:list var) : Tot a =
   match xs with
   | [] -> CM?.unit m
@@ -83,12 +99,16 @@ let rec xsdenote (#a #b:Type) (m:cm a) (vm:vmap a b) (xs:list var) : Tot a =
 
 (***** Flattening expressions to lists of variables *)
 
+(*| Flattens a reflected monoid expression into the list of its variables from left to right, dropping units. *)
 let rec flatten (e:exp) : list var =
   match e with
   | Unit -> []
   | Var x -> [x]
   | Mult e1 e2 -> flatten e1 @ flatten e2
 
+(*| The denotation of an appended list of variables is the monoid product of the denotations of the two parts.
+
+    Auxiliary lemma for `FStar.Tactics.CanonCommMonoid.flatten_correct`. *)
 let rec flatten_correct_aux (#a #b:Type) (m:cm a) (vm:vmap a b)
                                                   (xs1 xs2:list var) :
     Lemma (xsdenote m vm (xs1 @ xs2) == CM?.mult m (xsdenote m vm xs1)
@@ -100,6 +120,7 @@ let rec flatten_correct_aux (#a #b:Type) (m:cm a) (vm:vmap a b)
                       (xsdenote m vm xs1') (xsdenote m vm xs2);
                 flatten_correct_aux m vm xs1' xs2)
 
+(*| Flattening preserves the meaning of an expression: `mdenote m vm e == xsdenote m vm (flatten e)`, by associativity and the unit laws. *)
 let rec flatten_correct (#a #b:Type) (m:cm a) (vm:vmap a b) (e:exp) :
     Lemma (mdenote m vm e == xsdenote m vm (flatten e)) =
   match e with
@@ -114,9 +135,15 @@ let rec flatten_correct (#a #b:Type) (m:cm a) (vm:vmap a b) (e:exp) :
    information in the vmap and use that for choosing the
    permutation. This means that permute has access to the vmap. *)
 
+(*| Permutation functions used by the canonizer to reorder the variables of a flattened expression.
+
+    A permutation receives the carrier type, the variable map (so that it can use the extra information of type `b`) and the list of variables. Its soundness is stated by `FStar.Tactics.CanonCommMonoid.permute_correct`. *)
 let permute (b:Type) = a:Type -> vmap a b -> list var -> list var
 
 // high-level correctness criterion for permutations
+(*| The soundness condition for a `FStar.Tactics.CanonCommMonoid.permute` function: for every commutative monoid and variable map, it preserves the denotation of every list of variables.
+
+    A sufficient condition is `FStar.Tactics.CanonCommMonoid.permute_via_swaps`. *)
 let permute_correct (#b:Type) (p:permute b) =
   #a:Type -> m:cm a -> vm:vmap a b -> xs:list var ->
     Lemma (xsdenote m vm xs == xsdenote m vm (p a vm xs))
@@ -124,6 +151,9 @@ let permute_correct (#b:Type) (p:permute b) =
 // sufficient condition:
 // permutation has to be expressible as swaps of adjacent list elements
 
+(*| Swapping two adjacent variables, at position `s` counted from offset `n`, preserves the denotation of a list of variables in any commutative monoid.
+
+    Auxiliary lemma for `FStar.Tactics.CanonCommMonoid.apply_swap_correct`; the swaps are from `FStar.Tactics.CanonCommSwaps`. *)
 let rec apply_swap_aux_correct (#a #b:Type) (n:nat) (m:cm a) (vm:vmap a b)
                            (xs:list var) (s:swap (length xs + n)) :
     Lemma (requires True)
@@ -141,12 +171,14 @@ let rec apply_swap_aux_correct (#a #b:Type) (n:nat) (m:cm a) (vm:vmap a b)
            CM?.commutativity m (select x1 vm) (select x2 vm))
       else apply_swap_aux_correct (n+1) m vm (x2 :: xs') s
 
+(*| Swapping two adjacent variables with `FStar.Tactics.CanonCommSwaps.apply_swap` preserves the denotation of a list of variables in any commutative monoid. *)
 let apply_swap_correct (#a #b:Type) (m:cm a) (vm:vmap a b)
                            (xs:list var) (s:swap (length xs)):
     Lemma (requires True)
           (ensures (xsdenote m vm xs == xsdenote m vm (apply_swap xs s)))
           (decreases xs) = apply_swap_aux_correct 0 m vm xs s
 
+(*| Applying a sequence of adjacent swaps with `FStar.Tactics.CanonCommSwaps.apply_swaps` preserves the denotation of a list of variables in any commutative monoid. *)
 let rec apply_swaps_correct (#a #b:Type) (m:cm a) (vm:vmap a b)
                             (xs:list var) (ss:list (swap (length xs))):
     Lemma (requires True)
@@ -157,10 +189,16 @@ let rec apply_swaps_correct (#a #b:Type) (m:cm a) (vm:vmap a b)
   | s::ss' -> apply_swap_correct m vm xs s;
               apply_swaps_correct m vm (apply_swap xs s) ss'
 
+(*| The property that a permutation function's result can always be obtained from its input by a sequence of adjacent swaps.
+
+    This implies `FStar.Tactics.CanonCommMonoid.permute_correct`, as proved by `FStar.Tactics.CanonCommMonoid.permute_via_swaps_correct`. *)
 let permute_via_swaps (#b:Type) (p:permute b) =
   (#a:Type) -> (vm:vmap a b) -> xs:list var ->
     Lemma (exists ss. p a vm xs == apply_swaps xs ss)
 
+(*| A permutation expressible by adjacent swaps preserves the denotation of a given list of variables.
+
+    Auxiliary lemma for `FStar.Tactics.CanonCommMonoid.permute_via_swaps_correct`. *)
 let permute_via_swaps_correct_aux
   (#b:Type) (p:permute b) (pvs:permute_via_swaps p)
   (#a:Type) (m:cm a) (vm:vmap a b)  (xs:list var) :
@@ -171,6 +209,7 @@ let permute_via_swaps_correct_aux
     (() <: squash (exists ss. p a vm xs == apply_swaps xs ss))
     (fun ss -> apply_swaps_correct m vm xs ss)
 
+(*| Turns a proof of `FStar.Tactics.CanonCommMonoid.permute_via_swaps` into a proof of `FStar.Tactics.CanonCommMonoid.permute_correct` for the same permutation. *)
 let permute_via_swaps_correct
   (#b:Type) (p:permute b) (pvs:permute_via_swaps p) : permute_correct p =
      permute_via_swaps_correct_aux p pvs
@@ -181,18 +220,26 @@ let permute_via_swaps_correct
 // Here we sort without associating any extra information with the
 // variables and only look at the actual identifiers
 
+(*| The default permutation: sorts variables by increasing index, ignoring the variable map.
+
+    Its correctness is `FStar.Tactics.CanonCommMonoid.sort_correct`; it is the permutation used by `FStar.Tactics.CanonCommMonoid.canon_monoid`. *)
 let sort : permute unit =
   (fun a vm -> List.Tot.Base.sortWith #nat (compare_of_bool (<)))
 
+(*| The permutation that sorts variables with the comparison function `f`, using `FStar.List.Tot.Base.sortWith`.
+
+    Its correctness, for any `f`, is `FStar.Tactics.CanonCommMonoid.sortWith_correct`. *)
 let sortWith (#b:Type) (f:nat -> nat -> int) : permute b =
   (fun a vm -> List.Tot.Base.sortWith #nat f)
 
+(*| The result of `FStar.Tactics.CanonCommMonoid.sort` can be obtained by adjacent swaps, since sorting yields a permutation of its input. *)
 let sort_via_swaps (#a:Type) (vm : vmap a unit) (xs:list var) :
     Lemma (exists ss. sort a vm xs == apply_swaps xs ss) =
   List.Tot.Properties.sortWith_permutation #nat (compare_of_bool (<)) xs;
   let ss = equal_counts_implies_swaps #nat xs (sort a vm xs) in
   assert (sort a vm xs == apply_swaps xs ss)
 
+(*| The result of `FStar.Tactics.CanonCommMonoid.sortWith f` can be obtained by adjacent swaps, for any comparison function `f`. *)
 let sortWith_via_swaps (#a #b:Type) (f:nat -> nat -> int)
     (vm : vmap a b) (xs:list var) :
     Lemma (exists ss. sortWith #b f a vm xs == apply_swaps xs ss) =
@@ -200,29 +247,42 @@ let sortWith_via_swaps (#a #b:Type) (f:nat -> nat -> int)
   let ss = equal_counts_implies_swaps #nat xs (sortWith #b f a vm xs) in
   assert (sortWith #b f a vm xs == apply_swaps xs ss)
 
+(*| Sorting with `FStar.Tactics.CanonCommMonoid.sort` preserves the denotation of a list of variables.
+
+    Auxiliary lemma for `FStar.Tactics.CanonCommMonoid.sort_correct`. *)
 let sort_correct_aux (#a:Type) (m:cm a) (vm:vmap a unit) (xs:list var) :
     Lemma (xsdenote m vm xs == xsdenote m vm (sort a vm xs)) =
   permute_via_swaps_correct #unit sort sort_via_swaps m vm xs
 
+(*| Sorting with `FStar.Tactics.CanonCommMonoid.sortWith f` preserves the denotation of a list of variables.
+
+    Auxiliary lemma for `FStar.Tactics.CanonCommMonoid.sortWith_correct`. *)
 let sortWith_correct_aux (#a #b:Type) (f:nat -> nat -> int) (m:cm a) (vm:vmap a b) (xs:list var) :
     Lemma (xsdenote m vm xs == xsdenote m vm (sortWith #b f a vm xs)) =
   permute_via_swaps_correct (sortWith f) (fun #a -> sortWith_via_swaps f) m vm xs
 
+(*| `FStar.Tactics.CanonCommMonoid.sort` satisfies `FStar.Tactics.CanonCommMonoid.permute_correct`. *)
 let sort_correct : permute_correct #unit sort = sort_correct_aux
 
+(*| `FStar.Tactics.CanonCommMonoid.sortWith f` satisfies `FStar.Tactics.CanonCommMonoid.permute_correct` for every comparison function `f`. *)
 let sortWith_correct (#b:Type) (f:nat -> nat -> int) :
   permute_correct #b (sortWith #b f) =
   (fun #a -> sortWith_correct_aux #a #b f)
 
 (***** Canonicalization tactics *)
 
+(*| Computes the canonical form of a reflected expression: flattens it to a list of variables and reorders them with the permutation `p`. *)
 let canon (#a #b:Type) (vm:vmap a b) (p:permute b) (e:exp) = p a vm (flatten e)
 
+(*| Canonicalization preserves meaning: the denotation of `e` equals the product of the variables of `FStar.Tactics.CanonCommMonoid.canon vm p e`, for any permutation satisfying `FStar.Tactics.CanonCommMonoid.permute_correct`. *)
 let canon_correct (#a #b:Type) (p:permute b) (pc:permute_correct p)
                        (m:cm a) (vm:vmap a b) (e:exp) :
     Lemma (mdenote m vm e == xsdenote m vm (canon vm p e)) =
   flatten_correct m vm e; pc m vm (flatten e)
 
+(*| The reflection lemma behind the monoid canonizer: two expressions have equal denotations if their canonical forms have equal denotations.
+
+    `FStar.Tactics.CanonCommMonoid.canon_monoid_aux` applies it to replace a goal `mdenote m vm e1 == mdenote m vm e2` by the equality of the canonical forms. *)
 let monoid_reflect (#a #b:Type) (p:permute b) (pc:permute_correct p)
                    (m:cm a) (vm:vmap a b) (e1 e2:exp)
     (_ : squash (xsdenote m vm (canon vm p e1) ==
@@ -230,16 +290,18 @@ let monoid_reflect (#a #b:Type) (p:permute b) (pc:permute_correct p)
     : squash (mdenote m vm e1 == mdenote m vm e2) =
   canon_correct p pc m vm e1; canon_correct p pc m vm e2
 
-(* Finds the position of first occurrence of x in xs.
-   This is now specialized to terms and their funny term_eq. *)
+(*| Returns the position of the first term of `xs` equal to `x` according to `FStar.Reflection.TermEq.Simple.term_eq`, counting from `n`, or `None` if there is none. *)
 let rec where_aux (n:nat) (x:term) (xs:list term) :
     Tac (option nat) =
   match xs with
   | [] -> None
   | x'::xs' -> if term_eq x x' then Some n else where_aux (n+1) x xs'
+(*| Returns the position of the first term of a list equal to a given term according to `FStar.Reflection.TermEq.Simple.term_eq`, counting from `0`, or `None` if there is none. *)
 let where = where_aux 0
 
-// This expects that mult, unit, and t have already been normalized
+(*| Reflects one term as a monoid expression, extending the list of already seen opaque terms and the variable map.
+
+    An application of the monoid operation `mult` to two explicit arguments becomes `Mult`, a term equal to `unit` becomes `Unit`, and any other term becomes a `Var`, reusing the index of an equal term already in `ts` (compared with `FStar.Reflection.TermEq.Simple.term_eq`) or allocating the next index. A new variable is bound to `unquotea t` and to the extra information `f t`. The arguments `mult`, `unit` and `t` are expected to be already normalized. *)
 let rec reification_aux (#a #b:Type) (unquotea:term->Tac a) (ts:list term)
     (vm:vmap a b) (f:term->Tac b)
     (mult unit t : term) : Tac (exp & list term & vmap a b) =
@@ -263,6 +325,9 @@ let rec reification_aux (#a #b:Type) (unquotea:term->Tac a) (ts:list term)
     else fvar t ts vm
 
 // TODO: could guarantee same-length lists
+(*| Reflects a list of terms as monoid expressions over a shared variable map.
+
+    `tmult`, `tunit` and the terms are first normalized with `delta`, `zeta` and `iota`, then each term is reflected with `FStar.Tactics.CanonCommMonoid.reification_aux`. Equal subterms in different terms get the same variable. The map's default denotation is `munit` and its default extra information is `def`. *)
 let reification (b:Type) (f:term->Tac b) (def:b) (#a:Type)
     (unquotea:term->Tac a) (quotea:a -> Tac term) (tmult tunit:term) (munit:a)
     (ts:list term) :
@@ -281,11 +346,13 @@ let reification (b:Type) (f:term->Tac b) (def:b) (#a:Type)
       ([],[], const munit def) ts
   in (List.Tot.Base.rev es,vm)
 
+(*| Tests whether a term occurs in a list of terms, using `FStar.Reflection.TermEq.Simple.term_eq`. *)
 val term_mem: term -> list term -> Tac bool
 let rec term_mem x = function
   | [] -> false
   | hd::tl -> if term_eq hd x then true else term_mem x tl
 
+(*| Unfolds, in the current goal, every subterm equal to one of the given terms, by rewriting top-down with `FStar.Tactics.V2.Derived.topdown_rewrite` and `delta` normalization. *)
 let unfold_topdown (ts: list term) =
   let should_rewrite (s:term) : Tac (bool & int) =
     (term_mem s ts, 0)
@@ -296,6 +363,7 @@ let unfold_topdown (ts: list term) =
   in
   topdown_rewrite should_rewrite rewrite
 
+(*| Builds the syntax of a list from a list of values, given the syntax `ta` of the element type and a quotation function for the elements. *)
 let rec quote_list (#a:Type) (ta:term) (quotea:a->Tac term) (xs:list a) :
     Tac term =
   match xs with
@@ -304,6 +372,7 @@ let rec quote_list (#a:Type) (ta:term) (quotea:a->Tac term) (xs:list a) :
                               (quotea x, Q_Explicit);
                               (quote_list ta quotea xs', Q_Explicit)]
 
+(*| Builds the syntax of a variable map, given the syntax of the types `a` and `b` and quotation functions for their values. *)
 let quote_vm (#a #b:Type) (ta tb: term)
     (quotea:a->Tac term) (quoteb:b->Tac term) (vm:vmap a b) : Tac term =
   let quote_pair (p:a&b) : Tac term =
@@ -324,6 +393,7 @@ let quote_vm (#a #b:Type) (ta tb: term)
   mk_app (`Mktuple2) [(tylist, Q_Implicit); (t_a_star_b, Q_Implicit);
                       (tlist, Q_Explicit); (tpair, Q_Explicit)]
 
+(*| Builds the syntax of a reflected monoid expression, as a term of type `FStar.Tactics.CanonCommMonoid.exp`. *)
 let rec quote_exp (e:exp) : Tac term =
   match e with
   | Unit -> `Unit
@@ -331,6 +401,9 @@ let rec quote_exp (e:exp) : Tac term =
   | Mult e1 e2 -> mk_e_app (`Mult) [quote_exp e1; quote_exp e2]
 
 (* [@@plugin] *)
+(*| The implementation of the commutative monoid canonizer, working on explicit syntax of the carrier, the monoid, its operations and the permutation.
+
+    The current goal must be an equality at the type `ta`; otherwise the tactic fails with "Goal should be an equality" or "Goal should be an equality at the right monoid type". It reflects both sides with `FStar.Tactics.CanonCommMonoid.reification`, changes the goal to an equality of `FStar.Tactics.CanonCommMonoid.mdenote` terms, applies `FStar.Tactics.CanonCommMonoid.monoid_reflect` and normalizes the resulting equality of canonical forms. The goal is not closed. Usually called through `FStar.Tactics.CanonCommMonoid.canon_monoid_with`. *)
 let canon_monoid_aux
     (a b: Type) (ta: term) (unquotea: term -> Tac a) (quotea: a -> Tac term)
     (tm tmult tunit: term) (munit: a) (tb: term) (quoteb:b->Tac term)
@@ -414,6 +487,9 @@ let canon_monoid_aux
       else fail "Goal should be an equality at the right monoid type"
   | _ -> fail "Goal should be an equality"
 
+(*| Canonizes an equality goal in the commutative monoid `m`, ordering variables with a user-supplied permutation.
+
+    Every maximal subterm that is not an application of the monoid operation or the unit is treated as a variable. The function `f` computes extra information of type `b` for each such subterm (with default `def`), and the permutation `p`, proved correct by `pc`, may use it to reorder the variables. The goal must be an equality at the carrier type of `m`. It is replaced by an equality between the reordered products, which is left open; close it with `FStar.Tactics.V2.Derived.trefl` when both sides are expected to coincide, or leave it to the SMT solver. See `FStar.Tactics.CanonCommMonoid.canon_monoid` for the default ordering. *)
 let canon_monoid_with
     (b:Type) (f:term->Tac b) (def:b) (p:permute b) (pc:permute_correct p)
     (#a:Type) (m:cm a) : Tac unit =
@@ -422,12 +498,25 @@ let canon_monoid_with
     (quote m) (quote (CM?.mult m)) (quote (CM?.unit m)) (CM?.unit m)
     (quote b) (fun (x:b) -> quote x) f def (quote p) (quote (pc <: permute_correct p))
 
+(*| Canonizes an equality goal in the commutative monoid `cm` by sorting the operands of both sides in a common order.
+
+    Every subterm that is not the monoid operation or its unit becomes an opaque variable, numbered by first occurrence; units are dropped and the variables are sorted by number. The goal is replaced by the equality of the two sorted products and is not closed: when the sides are equal up to associativity, commutativity and units, follow with `FStar.Tactics.V2.Derived.trefl`. Fails unless the goal is an equality at the carrier type of `cm`.
+
+    For semirings, including arithmetic on `int`, `FStar.Tactics.CanonCommSemiring.canon_semiring` also handles distributivity and constants.
+
+    ```fstar
+    let monoid_example (a b c : int) =
+      assert (a + (b + c) == c + (b + a))
+        by (FStar.Tactics.CanonCommMonoid.canon_monoid FStar.Algebra.CommMonoid.int_plus_cm;
+            FStar.Tactics.V2.Derived.trefl ())
+    ``` *)
 let canon_monoid (#a:Type) (cm:cm a) : Tac unit =
   canon_monoid_with unit (fun _ -> ()) ()
     (fun a -> sort a) sort_correct cm
 
 (***** Examples *)
 
+(*| Example: proves an equation between integer sums with `FStar.Tactics.CanonCommMonoid.canon_monoid` on `FStar.Algebra.CommMonoid.int_plus_cm` followed by `trefl`. *)
 let lem0 (a b c d : int) =
   assert (0 + 1 + a + b + c + d + 2 == (b + 0) + 2 + d + (c + a + 0) + 1)
   by (canon_monoid int_plus_cm; trefl ())
@@ -437,23 +526,38 @@ let lem0 (a b c d : int) =
 //    It might be enough to move all them to the end of the list by
 //    a careful ordering and let the normalizer do its thing: *)
 
-// remember if something is a constant or not
+(*| Tests whether a term is a constant literal, that is, whether it inspects to `Tv_Const`. *)
 let is_const (t:term) : Tac bool = Tv_Const? (inspect t)
 
-// sort things and put the constants last
+(*| Compares two variables for `FStar.Tactics.CanonCommMonoid.const_last`, using whether they stand for constants as recorded in the variable map.
+
+    A constant compares as smaller than a non-constant, and variables of the same kind are compared by index. Since `FStar.List.Tot.Base.sortWith` puts smaller elements first, this places constants before the other variables, despite the name of `FStar.Tactics.CanonCommMonoid.const_last`. *)
 let const_compare (#a:Type) (vm:vmap a bool) (x y:var) =
   match select_extra x vm, select_extra y vm with
   | false, false | true, true -> compare_of_bool (<) x y
   | false, true -> 1
   | true, false -> -1
 
+(*| The permutation used by `FStar.Tactics.CanonCommMonoid.canon_monoid_const`: sorts variables with `FStar.Tactics.CanonCommMonoid.const_compare`.
+
+    Despite its name, the result has the constant variables first, then the others, each group in index order. *)
 let const_last (a:Type) (vm:vmap a bool) (xs:list var) : list var =
   List.Tot.Base.sortWith #nat (const_compare vm) xs
 
+(*| Canonizes an equality goal in a commutative monoid, grouping constant literals together so that the normalizer can combine them.
+
+    Like `FStar.Tactics.CanonCommMonoid.canon_monoid`, but the variables standing for literals (see `FStar.Tactics.CanonCommMonoid.is_const`) are put before the other variables, using `FStar.Tactics.CanonCommMonoid.const_last`. The goal is left open.
+
+    ```fstar
+    let monoid_const_example (a b : int) =
+      assert (a + 2 + b == b + (1 + a) + 1)
+        by (FStar.Tactics.CanonCommMonoid.canon_monoid_const FStar.Algebra.CommMonoid.int_plus_cm)
+    ``` *)
 let canon_monoid_const #a cm = canon_monoid_with bool is_const false
   (fun a -> const_last a)
   (fun #a m vm xs -> sortWith_correct #bool (const_compare vm) #a m vm xs) #a cm
 
+(*| Example: proves an equation between integer sums containing constants with `FStar.Tactics.CanonCommMonoid.canon_monoid_const` on `FStar.Algebra.CommMonoid.int_plus_cm` followed by `trefl`. *)
 let lem1 (a b c d : int) =
   assert_by_tactic (0 + 1 + a + b + c + d + 2 == (b + 0) + 2 + d + (c + a + 0) + 1)
   (fun _ -> canon_monoid_const int_plus_cm; trefl())
@@ -461,11 +565,12 @@ let lem1 (a b c d : int) =
 // (* Trying to only bring some constants to the front,
 //    as Nik said would be useful for separation logic *)
 
-// remember if something is a constant or not
+(*| Tests whether a term occurs in the list `ts` of special terms, using `FStar.Tactics.CanonCommMonoid.term_mem`. *)
 let is_special (ts:list term) (t:term) : Tac bool = t `term_mem` ts
 
-// put the special things sorted before the non-special ones,
-// but don't change anything else
+(*| Compares two variables for `FStar.Tactics.CanonCommMonoid.special_first`, using whether they stand for special terms as recorded in the variable map.
+
+    Two special variables are compared by index, any two non-special variables compare as equal (`0`), and a non-special variable compares as smaller than a special one. Since `FStar.List.Tot.Base.sortWith` puts smaller elements first, this places the special variables after the others, despite the name of `FStar.Tactics.CanonCommMonoid.special_first`. *)
 let special_compare (#a:Type) (vm:vmap a bool) (x y:var) =
   match select_extra x vm, select_extra y vm with
   | false, false -> 0
@@ -473,12 +578,19 @@ let special_compare (#a:Type) (vm:vmap a bool) (x y:var) =
   | false, true -> -1
   | true, false -> 1
 
+(*| The permutation used by `FStar.Tactics.CanonCommMonoid.canon_monoid_special`: sorts variables with `FStar.Tactics.CanonCommMonoid.special_compare`.
+
+    Despite its name, the special variables end up after the non-special ones, sorted by index. The non-special variables all compare as equal, and `FStar.List.Tot.Base.sortWith` is not stable, so their relative order is not preserved and need not be the same on both sides of an equation. *)
 let special_first (a:Type) (vm:vmap a bool) (xs:list var) : list var =
   List.Tot.Base.sortWith #nat (special_compare vm) xs
 
+(*| `FStar.Tactics.CanonCommMonoid.special_first` satisfies `FStar.Tactics.CanonCommMonoid.permute_correct`. *)
 let special_first_correct : permute_correct special_first =
     (fun #a m vm xs -> sortWith_correct #bool (special_compare vm) #a m vm xs)
 
+(*| Canonizes an equality goal in a commutative monoid, separating the given special terms from the others.
+
+    Partial application to a list of special terms `ts`; the result expects the monoid, as in `canon_monoid_special ts m`. Variables whose term is in `ts` are sorted by first occurrence and, with the current `FStar.Tactics.CanonCommMonoid.special_compare`, placed after the other variables, whose order is not normalized. Equalities that hold only up to reordering the non-special terms may therefore remain unproved by `trefl`. The goal is left open. *)
 let canon_monoid_special (ts:list term) =
   canon_monoid_with bool (is_special ts) false
     (fun a -> special_first a)

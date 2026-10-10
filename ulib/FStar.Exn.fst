@@ -16,8 +16,12 @@
 
 module FStar.Exn
 
-(** Providing the signature of [raise],
-    that is implemented natively in FStar_Exn.ml as primitive raise *)
+(*| Raises the exception `e`.
+
+    An assumed primitive in the `Exn` effect, implemented natively as the
+    target's raise. Its postcondition is `False`, so it does not return normally
+    and the result type is arbitrary. See also `FStar.All.failwith` and
+    `FStar.All.try_with`. *)
 assume
 val raise (e: exn) : Exn 'a (ensures fun _ -> False)
 
