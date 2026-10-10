@@ -57,10 +57,10 @@ class Gates(unittest.TestCase):
         with open(os.path.join(self.exports, module + ".json"), "w") as f:
             json.dump({"declarations": decls}, f)
 
-    def check(self):
+    def check(self, complete=False):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            rc = u.cmd_check(SimpleNamespace(exports=self.exports))
+            rc = u.cmd_check(SimpleNamespace(exports=self.exports, complete=complete))
         return rc, out.getvalue()
 
     def test_complete_module_passes(self):
@@ -116,6 +116,25 @@ class Gates(unittest.TestCase):
         self.status["blocked"]["FStar.Option"] = "Reason."
         self.export([decl("FStar.Option.get", doc=["Returns the value."])])
         self.assertIn("FStar.Option: both completed and blocked", self.check()[1])
+
+    def test_complete_requires_every_module(self):
+        self.export([decl("FStar.Option.get", doc=["Returns the value."])])
+        saved = u.manifest, u.audit_module
+        u.audit_module = lambda e: []
+        u.manifest = lambda: [{"module": "FStar.Option"}, {"module": "FStar.Other"},
+                              {"module": "Prims"}]
+        try:
+            self.assertEqual(self.check()[0], 0)
+            rc, out = self.check(complete=True)
+            self.assertEqual(rc, 1)
+            self.assertIn("FStar.Other: neither completed nor blocked", out)
+            self.assertIn("Prims: neither completed nor blocked", out)
+            self.status["blocked"]["Prims"] = "Reason."
+            self.status["completed"].append("FStar.Other")
+            self.export([decl("FStar.Other.x", doc=["Doc."])], module="FStar.Other")
+            self.assertEqual(self.check(complete=True)[0], 0)
+        finally:
+            u.manifest, u.audit_module = saved
 
     def test_coverage_counts(self):
         self.status["exclusions"]["FStar.Option.b"] = "Reason."

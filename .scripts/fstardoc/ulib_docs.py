@@ -579,6 +579,10 @@ def cmd_check(args):
             errors.append("exclusion without a reason: %s" % name)
         if mod in st["completed"] and name not in exported_names:
             errors.append("stale exclusion, not exported: %s" % name)
+    if getattr(args, "complete", False):
+        done = set(st["completed"]) | set(st["blocked"])
+        errors += ["%s: neither completed nor blocked" % m
+                   for m in sorted(entries) if m not in done]
     for e in errors:
         print(e)
     print("%d completed modules checked, %d problems" % (len(st["completed"]), len(errors)))
@@ -618,6 +622,8 @@ def main():
 
     p = sub.add_parser("check")
     p.add_argument("--exports", required=True)
+    p.add_argument("--complete", action="store_true",
+                   help="also require every top-level module to be completed or blocked")
 
     args = ap.parse_args()
     if args.cmd == "manifest":

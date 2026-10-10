@@ -153,7 +153,7 @@ python3 $S export --fstar stage2/out/bin/fstar.exe \
 python3 $S coverage --exports _docs -v --module FStar.Seq.Base
 python3 $S lint --exports _docs --module FStar.Seq.Base
 python3 $S check --exports _docs
-
+python3 $S check --exports _docs --complete
 # 3. Verify the checked examples.
 make -C tests/docs/ulib
 ```
@@ -170,6 +170,9 @@ a reason. Currently these are `Prims`, `FStar.Pervasives.Native` and
 these modules cannot depend on. `coverage` marks blocked modules with `!`,
 and `check` rejects a module that is both blocked and completed.
 
+`check --complete` also fails when a top-level module is neither completed
+nor blocked. Use it to catch a new module added without documentation.
+
 ### What coverage counts
 
 `coverage` counts `val`, `let`, `type` and `assume` declarations in the
@@ -181,3 +184,21 @@ declarations is therefore not full coverage of every public name.
 The lint is a conservative check written without a Markdown parser. Passing
 it does not prove that the text conforms to the grammar; that awaits the
 verified parser, which will run the fixtures in `fixtures/`.
+
+## Current status
+
+All 221 top-level modules are completed or blocked. 5,158 of 5,305
+eligible declarations are documented; the remaining 147 are in the three
+blocked modules. 409 constructors are covered by their parent type.
+
+Still open:
+
+- The blocked modules `Prims`, `FStar.Pervasives.Native` and
+  `FStar.Attributes`.
+- The public forms the export omits, listed per module under `unsupported`
+  in `ulib-docs-status.json`: effects in `Prims`, `FStar.Pervasives`,
+  `FStar.All` and `FStar.Tactics.Effect`, and mutually recursive
+  definitions in six reflection and tactic modules.
+- Module and section introductions, which have no place in the export.
+- Grammar conformance and renderer parity, which await the verified parser.
+- Source bugs found while documenting, listed in `ULIB_SOURCE_ISSUES.md`.
