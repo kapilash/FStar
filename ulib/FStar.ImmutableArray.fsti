@@ -88,25 +88,36 @@ let elem_precedes (#a:Type u#a) (s:t a) (i : nat{i < length s})
       memP_precedes (index l i) l
     )
 
-(* The array with the element at [i] replaced by [v].  Extracted code may
-   update the array in place when nothing else refers to it. *)
+(*| Returns an immutable array with the element at zero-based index `i` replaced by `v`, leaving all other elements unchanged.
+
+    Total. The caller must prove `i < length s`; the original array retains its elements. See `FStar.ImmutableArray.length_upd` and `FStar.ImmutableArray.index_upd` for the length and indexing properties. Extracted code may reuse storage when the array is uniquely owned, but the interface does not specify allocation or timing behaviour. *)
 val upd (#a:Type u#a) (s:t a) (i:nat{ i < length s }) (v:a)
   : Tot (t a)
 
+(*| Replacing an element with `FStar.ImmutableArray.upd` preserves the array's length.
+
+    Requires `i < length s`. Triggered automatically on `length (upd s i v)`; useful for establishing index bounds on the updated array. *)
 val length_upd (#a:Type u#a) (s:t a) (i:nat{ i < length s }) (v:a)
   : Lemma (length (upd s i v) == length s)
           [SMTPat (length (upd s i v))]
 
+(*| Indexing an array updated at `i` returns `v` when `j = i`, and the original element at `j` otherwise.
+
+    Both indices must be less than `length s`. Triggered automatically on `index (upd s i v) j`; `FStar.ImmutableArray.length_upd` supplies the bound for indexing the updated array. *)
 val index_upd (#a:Type u#a) (s:t a) (i:nat{ i < length s }) (v:a)
               (j:nat{ j < length s })
   : Lemma (index (upd s i v) j == (if i = j then v else index s j))
           [SMTPat (index (upd s i v) j)]
 
-(* The array with [v] appended.  Extracted code may append in place, with
-   room to spare, when nothing else refers to the array. *)
+(*| Returns an immutable array with `v` appended after all the elements of `s`, in their original order.
+
+    Total, including for an empty array; the original array retains its elements. Use `FStar.ImmutableArray.to_list_push` with `FStar.ImmutableArray.length_spec` or `FStar.ImmutableArray.index_spec` to reason about the result. Extracted code may reuse storage when the array is uniquely owned, but the interface does not specify allocation or timing behaviour. *)
 val push (#a:Type u#a) (s:t a) (v:a)
   : Tot (t a)
 
+(*| The list of elements after `FStar.ImmutableArray.push s v` is `to_list s` followed by the singleton list `[v]`.
+
+    Triggered automatically on `to_list (push s v)`. This characterizes the appended array through its list of elements. *)
 val to_list_push (#a:Type u#a) (s:t a) (v:a)
   : Lemma (to_list (push s v) == FStar.List.Tot.append (to_list s) [v])
           [SMTPat (to_list (push s v))]
